@@ -38,6 +38,24 @@ FIXUPS = [
     # casts as lvalues were removed after GCC 3.x
     ('menu/radioanim.c', r'\(\(int\)\(offset\) = \(int\)\(ptr\) \+ \(int\)\(offset\)\)',
      '(*(int *)&(offset) = (int)(ptr) + (int)(offset))'),
+    # the kernel's thread tables live at physical address 0x100 on the console
+    ('mts/mts_new.c', r'\(struct ToT \*\)0x100', '((struct ToT *)psx_ToT)'),
+    # keep the host printf: MTS replaces it with a dummy in release builds
+    ('mts/mts_new.c', r'^int printf\(\)\n\{', 'int mgs_dummy_printf()\n{'),
+    # the idle task busy-waits for interrupts; yield to the host instead
+    ('mts/mts_new.c', r'while \( !mts_sio_unlocked \)\n(\s*);', r'while ( !mts_sio_unlocked )\n\1psx_idle();'),
+    ('mts/mts_new.c', r'if \( ch < 0 \)\n(\s*)\{\n(\s*)continue;', r'if ( ch < 0 )\n\1{\n\2psx_idle();\n\2continue;'),
+    ('takabe/thing.c', r'\(int\)find \|= 0x80000000;', '*(int *)&find |= 0x80000000;'),
+    # the game patches digits into this string literal at runtime; literals
+    # are read-only on the host, so give the strings writable storage
+    ('enemy/action.c',
+     r'const char \*s00a_off_800C33F4\[3\] = \{\n    "RATION",\n    "SOCOM/BULLET \* 12",\n    "FA-MAS/BULLET \* 25"\n\};',
+     'static char s00a_str0[] = "RATION";\nstatic char s00a_str1[] = "SOCOM/BULLET * 12";\n'
+     'static char s00a_str2[] = "FA-MAS/BULLET * 25";\n'
+     'char *s00a_off_800C33F4[3] = { s00a_str0, s00a_str1, s00a_str2 };'),
+    # swap in the native chara table once a stage binary was loaded
+    ('game/gamed.c', r'memcpy\(StageCharacterEntries, buf, gOverlayBinSize_800B5290\);',
+     'memcpy(StageCharacterEntries, buf, gOverlayBinSize_800B5290);\n    mgs_native_overlay_loaded(id);'),
 ]
 
 FILE_SCOPE_EXTERN = re.compile(r'^extern\s+[^;()]*?\b(\w+)\s*(?:\[[^\]]*\])?\s*;', re.M)
@@ -345,7 +363,7 @@ def main():
                     text = drop_static_after_extern(text)
                 for suffix, pat, rep in FIXUPS:
                     if src.replace('\\', '/').endswith(suffix):
-                        text, n = re.subn(pat, rep, text)
+                        text, n = re.subn(pat, rep, text, flags=re.M)
                         if n == 0:
                             raise AsmError('fixup no longer applies: %s' % suffix)
                 data = text.encode('utf-8', errors='surrogateescape')
