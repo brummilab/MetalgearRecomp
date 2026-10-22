@@ -134,8 +134,12 @@ int VSync(int mode)
     static uint32_t last;
     uint32_t start = vblank_hw;
 
-    if (mode < 0)
+    if (mode < 0) {
+        /* games busy-wait on this counter; let hardware time pass */
+        if (!in_irq)
+            hw_tick();
         return (int)vblank_hw;
+    }
     if (mode == 1) {
         psx_poll();
         return 0;
@@ -444,3 +448,6 @@ void psx_todo(const char *func)
         seen[n++] = func;
     psx_log("TODO: %s not implemented\n", func);
 }
+
+int PCcreat(char *name, int perms) { (void)name; (void)perms; return -1; }
+int PCwrite(int fd, char *buf, int len) { (void)fd; (void)buf; (void)len; return -1; }

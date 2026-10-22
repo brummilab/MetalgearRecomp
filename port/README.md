@@ -23,8 +23,8 @@ werden durch eine eigene Laufzeitschicht ersetzt.
 | Stages | 62 Overlays nativ; 18 (z. B. `s07b`, `s08b`, `s11d`, `s11g`, `s14e`, `s19b`) fehlen noch upstream |
 | Grafik | ✔️ Software-GPU (alle GP0-Befehle, Halbtransparenz, Dithering, Maskenbit) |
 | 3D-Mathematik | ✔️ GTE-Emulation nach Hardware-Spezifikation |
-| Sound | ✔️ SPU mit 24 ADPCM-Stimmen und ADSR; ⏳ Reverb, XA-Audio |
-| Filmsequenzen (STR/MDEC) | ⏳ noch nicht: Filme brechen nach dem eingebauten Timeout ab |
+| Sound | ✔️ SPU mit 24 ADPCM-Stimmen und ADSR, XA-Audio (Filmton); ⏳ Reverb |
+| Filmsequenzen (STR/MDEC) | ✔️ CD-Streaming in Echtzeit, VLC-Dekoder (STR v2/v3), MDEC, XA-Ton; mit Testdaten geprüft, mit echten Filmen noch nicht |
 | Speicherstände | ✔️ Memory-Card-Image `memcard1.mcd` (Standardformat, emulatorkompatibel) |
 | Eingabe | ✔️ Tastatur und Gamepads (SDL GameController, analog) |
 
@@ -103,12 +103,13 @@ port/
 │       ├── gte.c libgte.c  Geometrie-Coprozessor
 │       ├── gpu.c libgpu.c  Grafikchip (Software-Rasterizer), Ordering Tables
 │       ├── spu.c           Soundchip
-│       ├── libcd.c         CD-Laufwerk aus Disc-Image
+│       ├── libcd.c         CD-Laufwerk aus Disc-Image, Streaming (St*)
 │       ├── libpad.c        Controller
 │       ├── card.c          Memory Card + „bu00:“-Dateisystem
-│       ├── libpress.c      Film-Streaming/MDEC (Platzhalter)
+│       ├── mdec.c          Filme: VLC-Dekoder + MDEC (IDCT, YUV→RGB)
+│       ├── xa.c            XA-ADPCM-Audio (Filmton)
 │       └── os.c            Windows/POSIX-Spezifisches
-└── tests/test_runtime.c    Selbsttests GTE/GPU (ohne Spieldaten)
+└── tests/test_runtime.c    Selbsttests GTE/GPU/Filmkette (ohne Spieldaten)
 ```
 
 **Das Upstream-Repo bleibt unverändert.** Der Build legt eine übersetzte Kopie
@@ -148,8 +149,27 @@ die MIPS-Charaktertabelle durch die native.
 ## Nächste Schritte
 
 1. Mit einem echten Disc-Image testen und Abstürze bzw. Grafikfehler beheben.
-2. Filmsequenzen: CD-Streaming (`St*`) und MDEC-Dekoder (`DecDCT*`).
-3. XA-Audio (Musik/Funksprüche) und SPU-Reverb.
-4. Hochauflösendes Rendering / Breitbild als Option.
-5. Neue upstream dekompilierte Overlays erscheinen automatisch: Submodul
+2. SPU-Reverb.
+3. Hochauflösendes Rendering / Breitbild als Option.
+4. Neue upstream dekompilierte Overlays erscheinen automatisch: Submodul
    aktualisieren und neu bauen.
+
+### Filmwiedergabe
+
+Der Filmplayer des Spiels (`game/movie.c`, Abspann in `takabe/ending2.c`)
+läuft unverändert, darunter liegt:
+
+- **CD-Streaming** (`libcd.c`): `CdRead2` liest mit echter Laufwerksrate
+  (150 Sektoren/s bei doppelter Geschwindigkeit). Damit stimmt das Tempo von
+  15-fps-Filmen. STR-Sektoren (Kennung `0x0160`) werden zu Frames
+  zusammengesetzt (`StGetNext`/`StFreeRing`). Ist der Ring voll, wird ein
+  Frame verworfen, wie auf der Konsole.
+- **VLC** (`mdec.c`): STR-Bitstrom Version 2/3 (MPEG-1-Huffman-Tabelle B.14,
+  Escape-Codes, DC-Prädiktion bei v3) → MDEC-Codes.
+- **MDEC**: Dequantisierung mit der PSX-Standardtabelle, 8×8-IDCT,
+  YCbCr→RGB (15 Bit), Makroblöcke spaltenweise. Die Ausgabe an den
+  Callback des Spiels kommt sofort statt per DMA-Interrupt.
+- **XA-Audio** (`xa.c`): 4/8-Bit-ADPCM, Mono/Stereo, 37,8/18,9 kHz, auf
+  44,1 kHz umgerechnet und über den CD-Eingang des SPU gemischt.
+  Filmton gibt es nur mit Raw-Images (`.bin`), weil ISO-Images (2048 Byte/Sektor)
+  keine XA-Audiosektoren enthalten können.
