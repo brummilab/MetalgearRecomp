@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+
+# Originale Spieldaten NIEMALS committen (urheberrechtlich geschuetzt)
+*.iso
+*.bin
+*.cue
+*.ecm
+*.img
+SLPM_*
+SLUS_*
+SCES_*
+iso/
+
+# Lokale Arbeitsdateien
+work/
+*.log

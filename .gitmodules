@@ -1,0 +1,6 @@
+[submodule "upstream/mgs_reversing"]
+	path = upstream/mgs_reversing
+	url = https://github.com/FoxdieTeam/mgs_reversing.git
+[submodule "upstream/psyq_sdk"]
+	path = upstream/psyq_sdk
+	url = https://github.com/FoxdieTeam/psyq_sdk.git
