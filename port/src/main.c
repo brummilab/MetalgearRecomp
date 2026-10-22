@@ -22,6 +22,7 @@ static void usage(const char *argv0)
            "  --japanese       keep the game's own language setting (default: English)\n"
            "  --render-scale N internal resolution: 1 (original 320x240), 2 or 4 (default 2)\n"
            "  --widescreen     16:9 picture with a wider 3D field of view\n"
+           "  --stretch-hud    widescreen: stretch HUD/menus instead of keeping 4:3 proportions\n"
            "\n"
            "Keys: arrows = d-pad, X = cross, C = circle, Z = square, V = triangle,\n"
            "      A/S = L1/R1, Q/W = L2/R2, Enter = start, Backspace = select, Esc = quit\n",
@@ -31,7 +32,7 @@ static void usage(const char *argv0)
 int main(int argc, char **argv)
 {
     const char *iso = NULL, *save_dir = NULL;
-    int scale = 3, fullscreen = 0, render_scale = 2, widescreen = 0, i;
+    int scale = 3, fullscreen = 0, render_scale = 2, widescreen = 0, fit_hud = 1, i;
 
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--iso") && i + 1 < argc)
@@ -48,6 +49,8 @@ int main(int argc, char **argv)
             render_scale = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--widescreen"))
             widescreen = 1;
+        else if (!strcmp(argv[i], "--stretch-hud"))
+            fit_hud = 0;
         else {
             usage(argv[0]);
             return strcmp(argv[i], "--help") ? 1 : 0;
@@ -65,9 +68,9 @@ int main(int argc, char **argv)
     psx_kernel_init();
     psx_gpu_init();
     render_scale = psx_gpu_set_scale(render_scale);
-    psx_gte_widescreen = widescreen;
+    psx_ws_init(widescreen, fit_hud);
     psx_log("video: %dx%d internal%s\n", 320 * render_scale, 240 * render_scale,
-            widescreen ? ", widescreen 16:9" : "");
+            widescreen ? (psx_ws_hud ? ", widescreen 16:9, HUD 4:3" : ", widescreen 16:9") : "");
     psx_spu_init();
     psx_cd_init(iso);
     psx_card_init(save_dir);

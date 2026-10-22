@@ -23,6 +23,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 | 2026-10-22 | Englisch erzwingen (Standard), `--japanese` als Schalter | Integral hat englische Sprachausgabe; Spracheinstellung wird jedes Frame gesetzt, weil Spielstände/Optionsmenü sie überschreiben |
 | 2026-10-22 | Höhere Auflösung über zweiten, hochaufgelösten VRAM; Standard Faktor 2 | Original-VRAM bleibt maßgeblich (CPU-Zugriffe, Paletten); Faktor 2 passt sicher ins 30-fps-Budget |
 | 2026-10-22 | Breitbild per GTE-Projektion (×3/4) | Ohne Eingriff in Spielcode; HUD-Verzerrung als bekannte Einschränkung |
+| 2026-10-22 | HUD-Erkennung über Cache der GTE-Bildschirmpositionen (≥ 2 Treffer = 3D), Sprites immer 2D | Keine Änderung am Spielcode; Schwelle 2 verhindert HUD-Flackern durch Zufallstreffer |
 | 2026-10-22 | Overlays fest eingebunden, je Overlay vorgelinkt mit lokalisierten Symbolen | Eine einzige Programmdatei, keine DLL-/dlopen-Probleme, keine Symbolkonflikte zwischen Overlays |
 
 ## Technik
@@ -62,7 +63,9 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - [ ] Titelbildschirm (Overlay `title`) – wartet auf Upstream; bis dahin Start im Stage-Select
 - [ ] Fehlende Stages upstream: brf, camera, change, d18a(r), rank, s03d, s07b(r), s08b(r), s11d, s11g, s14e, s15c, s19b(r), title
 - [x] Hochauflösendes Rendering (2×/4×) und Breitbild (GTE-Hack)
-- [ ] Optional: HUD im Breitbild unverzerrt, Subpixel-Präzision (PGXP), Multithread-Rasterizer, 60 fps
+- [x] HUD im Breitbild unverzerrt (GTE-Positions-Cache), Filme im Breitbild als 4:3
+- [ ] Optional: Subpixel-Präzision (PGXP), Multithread-Rasterizer, 60 fps
+- [ ] Mit echten Szenen prüfen: HUD-Erkennung, 3D-Sprites, Markierungen über Gegnern
 - [ ] Optional: Windows-Build nativ unter Windows (MSYS2) einmal real testen
 - [ ] Fork von `mgs_reversing` für eigene Pull Requests anlegen
 
@@ -74,3 +77,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-22:** Hall (SPU-Reverb) eingebaut: Hardware-Formel mit 22050 Hz, alle PsyQ-Presets, Arbeitsbereich im Sound-RAM. Test: Nachhall klingt über ca. 2 s ab, ohne Hall endet der Impuls sofort.
 - **2026-10-22:** Englisch erzwingen eingebaut (`GM_CONFIG_ENGLISH` jedes Frame, Schalter `--japanese`), im laufenden Spiel per Debugger geprüft. Compiler-Warnungen bereinigt.
 - **2026-10-22:** Höhere Auflösung (1×/2×/4×) und Breitbild eingebaut; Rasterizer auf Spannen mit inkrementellen Gradienten umgestellt. Tests: Hochauflösung stimmt mit Originalpixeln überein, Breitbild-Projektion, Leistungsmessung.
+- **2026-10-22:** HUD im Breitbild unverzerrt: 2D-Elemente werden um die Mitte gestaucht, 3D über GTE-Positions-Cache erkannt; Filme im Breitbild als 4:3 mit Rändern. Tests bei 1× und 2×, 16:9-Vorschau geprüft.
