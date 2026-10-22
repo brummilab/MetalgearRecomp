@@ -15,6 +15,21 @@ typedef uint16_t u16;
 typedef uint8_t  u8;
 
 static u32 D[32]; /* data registers */
+
+/* 60 fps interpolation (interp.c): identity of projected vertices */
+extern int psx_interp_enabled;
+uint32_t psx_interp_rt_ordinal(uint32_t addr);
+void     psx_interp_vertex(uint64_t key, uint32_t val);
+static uint32_t rt_src, rt_ord, rt_seq;
+
+void psx_gte_note_rt(unsigned int addr)
+{
+    if (!psx_interp_enabled)
+        return;
+    rt_src = addr;
+    rt_ord = psx_interp_rt_ordinal(addr);
+    rt_seq = 0;
+}
 static u32 C[32]; /* control registers */
 
 /* --- register helpers ----------------------------------------------------- */
@@ -382,6 +397,8 @@ static void rtp(int n, int sf, int lm, int last)
     SXY2 = (u16)lim_sxy(1, (s32)(x >> 16)) | ((u32)(u16)lim_sxy(2, (s32)(y >> 16)) << 16);
     if (psx_ws_hud)
         psx_ws_mark((s16)SXY2, (s16)(SXY2 >> 16));
+    if (psx_interp_enabled)
+        psx_interp_vertex(((uint64_t)rt_src << 32) | ((uint64_t)(rt_ord & 0xFFF) << 20) | (rt_seq++ & 0xFFFFF), SXY2);
 
     if (last) {
         s64 d = mac0_set(div * DQA + DQB);

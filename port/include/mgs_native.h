@@ -21,6 +21,10 @@ void         psx_gte_command(unsigned int cmd);
 #define GTE_WC(n, v) psx_gte_write_ctrl((n), (unsigned int)(v))
 #define GTE_OP(c)    psx_gte_command(c)
 
+/* 60 fps interpolation: the rotation matrix was loaded from this address */
+void psx_gte_note_rt(unsigned int addr);
+#define GTE_NOTE_RT(a) psx_gte_note_rt(a)
+
 /* runtime hooks used by the source fixups in tools/asm2c.py */
 extern char psx_ToT[];
 void psx_idle(void);

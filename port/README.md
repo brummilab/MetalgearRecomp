@@ -69,6 +69,39 @@ Bekannte Grenzen:
 - Objekte am Bildrand können später auftauchen, weil das Spiel nach seinem
   4:3-Sichtfeld aussortiert.
 
+### 60 fps (experimentell, `--60fps`)
+
+Die Spiellogik läuft fest mit 30 Ticks pro Sekunde (`DG_FrameRate = 2`) und
+zählt in Frames. Doppelt so oft laufen lassen würde das Spiel doppelt so
+schnell machen. Deshalb wird zwischen zwei Spielframes ein **interpoliertes
+Zwischenbild** gezeichnet; die Logik bleibt unverändert (`src/psx/interp.c`):
+
+- Jede vom GTE projizierte Bildschirmposition bekommt einen Schlüssel:
+  Adresse der geladenen Rotationsmatrix (pro Objekt, z. B. `&obj->screen`),
+  wie oft diese Matrix im Frame geladen wurde, Nummer des Vertex danach.
+  Den Hinweis auf die Matrixadresse fügt `asm2c.py` beim Übersetzen von
+  `gte_SetRotMatrix` ein.
+- Das Spiel kopiert die Positionen mit normalem C-Code in seine Primitive.
+  Deshalb wird über den **Wert** zugeordnet (wie bei PGXP). Im Zwischenbild
+  liegt jeder wiedererkannte Vertex auf halbem Weg zwischen alter und neuer
+  Position.
+- Sicherungen: Polygone werden nur interpoliert, wenn **alle** Ecken eindeutig
+  wiedererkannt werden und sich höchstens 64 Pixel bewegt haben, also keine
+  Überblendung bei Kameraschnitten. Sprites/HUD bleiben unverändert.
+  Interpoliert wird nur, wenn das Spiel gerade mit 30 fps läuft; Filme
+  (15 fps über eigenen Takt) nicht.
+- Beide Pufferarten werden unterstützt: Zeichnet das Spiel in den gerade
+  sichtbaren Puffer, kommt das Zwischenbild zuerst (+1 Frame Latenz).
+  Zeichnet es in einen hinteren Puffer, wird das Zwischenbild in den
+  sichtbaren Puffer gezeichnet (keine zusätzliche Latenz).
+
+Grenzen: Ohne echtes Disc-Image ist ungeprüft, wie gut die Zuordnung im Spiel
+greift. Mögliche Artefakte sind springende Vertices bei Objekten, deren
+Vertex-Reihenfolge sich von Frame zu Frame ändert, und Teile, die nicht
+interpoliert werden, z. B. 2D-Effekte und Objekte ohne eigene Matrix. Die Animation
+der Spielfiguren selbst bleibt bei 30 Schritten pro Sekunde, nur die
+Bildschirmbewegung wird geglättet.
+
 ### Sprache
 
 *MGS Integral* hat englische Sprachausgabe und eine Spracheinstellung
@@ -129,6 +162,7 @@ build\windows\mgs.exe --iso "MGS Integral Disc 1.bin"
 | `--render-scale N` | interne Auflösung: 1 = Original 320×240, 2 = 640×480 (Standard), 4 = 1280×960 |
 | `--widescreen` | 16:9 mit breiterem 3D-Sichtfeld; HUD/Menüs bleiben unverzerrt, Filme in 4:3 |
 | `--stretch-hud` | im Breitbild HUD/Menüs strecken statt unverzerrt lassen |
+| `--60fps` | **experimentell:** interpolierte Zwischenbilder, 60 statt 30 Bilder/s |
 
 **Tastatur:** Pfeiltasten = Steuerkreuz, X = ✕, C = ○, Z = □, V = △,
 A/S = L1/R1, Q/W = L2/R2, Enter = Start, Backspace = Select, Esc = Beenden.

@@ -81,6 +81,7 @@ static void set_texwindow(u32 v)
 /* ---- widescreen: 2D elements are squeezed to 3/4 around the area centre ---- */
 
 static int ws_squeeze;          /* set per primitive by the exec functions */
+int psx_gpu_force3d;            /* set while drawing interpolated 3D primitives */
 
 /* x in target units (already offset and scaled) */
 static inline s32 squeeze(const Target *t, s32 x)
@@ -93,7 +94,7 @@ static inline s32 squeeze(const Target *t, s32 x)
 static int is_2d(const u32 *verts[], int n)
 {
     int i, hits = 0;
-    if (!psx_ws_hud || psx_ws_movie_active())
+    if (!psx_ws_hud || psx_ws_movie_active() || psx_gpu_force3d)
         return 0;
     for (i = 0; i < n; i++) {
         u32 w = *verts[i];
@@ -569,7 +570,7 @@ static void color(u32 w, Vtx *v)
 }
 
 /* number of words of the command at p (polylines scan for the terminator) */
-static int cmd_words(const u32 *p, int avail)
+int psx_gpu_cmd_words(const u32 *p, int avail)
 {
     u32 cmd = p[0] >> 24;
     if (cmd >= 0x20 && cmd < 0x40) {
@@ -799,7 +800,7 @@ static void exec_command(const u32 *p, int words)
 void psx_gpu_exec(const u32 *p, int len)
 {
     while (len > 0) {
-        int n = cmd_words(p, len);
+        int n = psx_gpu_cmd_words(p, len);
         if (n > len)
             n = len;
         exec_command(p, n);
@@ -807,6 +808,12 @@ void psx_gpu_exec(const u32 *p, int len)
         len -= n;
     }
 }
+
+/* drawing state around out-of-band redraws (60 fps interpolation) */
+static __typeof__(gs) saved_gs;
+
+void psx_gpu_push_state(void) { saved_gs = gs; }
+void psx_gpu_pop_state(void) { gs = saved_gs; }
 
 void psx_gpu_reset(void)
 {

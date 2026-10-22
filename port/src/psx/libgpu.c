@@ -39,10 +39,15 @@ void psx_gpu_init(void)
     disp_env.disp.h = 240;
 }
 
+static void run_pending(int before_present);
+
 void psx_gpu_vblank(void)
 {
     int stride, shift;
-    const uint16_t *vram = psx_gpu_display(&stride, &shift);
+    const uint16_t *vram;
+
+    run_pending(1);
+    vram = psx_gpu_display(&stride, &shift);
     if (disp_env.isrgb24) {
         vram = psx_vram;
         stride = 1024;
@@ -51,6 +56,7 @@ void psx_gpu_vblank(void)
     plat_present(vram, stride, shift, disp_env.disp.x, disp_env.disp.y, disp_env.disp.w,
                  disp_env.disp.h, disp_env.isrgb24, disp_enabled,
                  psx_gte_widescreen && psx_ws_movie_active());
+    run_pending(0);
 }
 
 void psx_draw_sync_interrupt(void)
@@ -202,15 +208,110 @@ u_long *ClearOTag(u_long *ot, int n)
     return ot;
 }
 
-void DrawOTag(u_long *p)
+/* ---- 60 fps interpolation (see interp.c) ------------------------------------------ */
+
+extern int psx_interp_enabled;
+extern int psx_gpu_force3d;
+int  psx_gpu_cmd_words(const uint32_t *p, int avail);
+void psx_gpu_push_state(void);
+void psx_gpu_pop_state(void);
+int  psx_interp_vertex_mid(uint32_t val, uint32_t *mid);
+void psx_interp_frame_done(void);
+
+static u_long  *pending_ot;          /* ordering table to draw again later */
+static uint32_t pending_at;          /* ... at this vblank */
+static int      pending_interp;      /* ... interpolated */
+static int      pending_before;      /* ... before presenting that vblank */
+static int      pending_dx, pending_dy;
+static uint32_t last_ot_vblank;
+static int      have_prev_frame;
+
+/* vertex word indices of a polygon or line command */
+static int vertex_words(const uint32_t *c, int n, int idx[], int max)
 {
-    psx_ws_new_frame();
+    uint32_t cmd = c[0] >> 24;
+    int k = 0, i;
+    if (cmd >= 0x20 && cmd < 0x40) {
+        int quad = (cmd & 0x08) != 0, tex = (cmd & 0x04) != 0, gour = (cmd & 0x10) != 0;
+        int verts = quad ? 4 : 3, step = (tex ? 2 : 1) + (gour ? 1 : 0);
+        for (i = 0; i < verts && k < max; i++)
+            idx[k++] = 1 + i * step;
+    } else if (cmd >= 0x40 && cmd < 0x60) {
+        int gour = (cmd & 0x10) != 0;
+        for (i = 1; i < n && k < max; i += gour ? 2 : 1) {
+            if ((cmd & 0x08) && i > 1 && (c[i] & 0xF000F000u) == 0x50005000u)
+                break;
+            idx[k++] = i;
+            if (!(cmd & 0x08) && k == 2)
+                break;
+        }
+    }
+    return k;
+}
+
+/* move all vertices halfway back to the previous frame; all or nothing */
+static int interpolate_command(uint32_t *c, int n)
+{
+    int idx[64], k = vertex_words(c, n, idx, 64), i;
+    uint32_t mid[64];
+    if (k == 0)
+        return 0;
+    for (i = 0; i < k; i++)
+        if (idx[i] >= n || !psx_interp_vertex_mid(c[idx[i]], &mid[i]))
+            return 0;
+    for (i = 0; i < k; i++)
+        c[idx[i]] = mid[i];
+    return 1;
+}
+
+/* move drawing area, offset and fills by (dx, dy) */
+static void translate_command(uint32_t *c, int dx, int dy)
+{
+    uint32_t cmd = c[0] >> 24;
+    if (cmd == 0xE3 || cmd == 0xE4) {
+        uint32_t x = (c[0] & 0x3FF) + dx, y = ((c[0] >> 10) & 0x3FF) + dy;
+        c[0] = (c[0] & 0xFFF00000u) | (x & 0x3FF) | ((y & 0x3FF) << 10);
+    } else if (cmd == 0xE5) {
+        int32_t x = ((int32_t)(c[0] << 21) >> 21) + dx, y = ((int32_t)(c[0] << 10) >> 21) + dy;
+        c[0] = 0xE5000000u | (x & 0x7FF) | ((uint32_t)(y & 0x7FF) << 11);
+    } else if (cmd == 0x02) {
+        uint32_t x = (c[1] & 0xFFFF) + dx, y = (c[1] >> 16) + dy;
+        c[1] = (x & 0xFFFF) | (y << 16);
+    }
+}
+
+static void exec_packet(const uint32_t *p, int len, int interp, int dx, int dy)
+{
+    uint32_t buf[256];
+    int i = 0;
+    if (!interp && !dx && !dy) {
+        psx_gpu_exec(p, len);
+        return;
+    }
+    memcpy(buf, p, (size_t)len * 4);
+    while (i < len) {
+        int n = psx_gpu_cmd_words(&buf[i], len - i), moved = 0;
+        if (n > len - i)
+            n = len - i;
+        if (interp)
+            moved = interpolate_command(&buf[i], n);
+        if (dx || dy)
+            translate_command(&buf[i], dx, dy);
+        psx_gpu_force3d = moved;
+        psx_gpu_exec(&buf[i], n);
+        psx_gpu_force3d = 0;
+        i += n;
+    }
+}
+
+static void walk_ot(u_long *p, int interp, int dx, int dy)
+{
     unsigned guard = 0;
     while (p) {
         u_long tag = *p;
         unsigned len = TAG_LEN(tag);
         if (len)
-            psx_gpu_exec((const uint32_t *)(p + 1), (int)len);
+            exec_packet((const uint32_t *)(p + 1), (int)len, interp, dx, dy);
         if (TAG_ADDR(tag) == TAG_END)
             break;
         p = (u_long *)psx_decode_addr24(TAG_ADDR(tag));
@@ -219,7 +320,83 @@ void DrawOTag(u_long *p)
             break;
         }
     }
+}
+
+/* drawing area the ordering table selects (its first E3 command) */
+static int ot_area(u_long *p, int *x, int *y)
+{
+    unsigned guard = 0;
+    while (p && guard++ < 100000) {
+        u_long tag = *p;
+        int len = (int)TAG_LEN(tag), i = 0;
+        const uint32_t *c = (const uint32_t *)(p + 1);
+        while (i < len) {
+            if ((c[i] >> 24) == 0xE3) {
+                *x = c[i] & 0x3FF;
+                *y = (c[i] >> 10) & 0x3FF;
+                return 1;
+            }
+            i += psx_gpu_cmd_words(&c[i], len - i);
+        }
+        if (TAG_ADDR(tag) == TAG_END)
+            break;
+        p = (u_long *)psx_decode_addr24(TAG_ADDR(tag));
+    }
+    return 0;
+}
+
+/*
+ * With --60fps every game frame (30 per second) is followed by an
+ * interpolated picture. Two buffering styles are handled:
+ *  - the frame is drawn into the displayed buffer: draw the interpolated
+ *    picture now and the real frame one vblank later;
+ *  - the frame is drawn into a back buffer that is shown a frame later:
+ *    draw the real frame now, and one vblank later the interpolated picture
+ *    into the buffer currently on screen.
+ */
+void DrawOTag(u_long *p)
+{
+    uint32_t now = psx_vblank_count();
+
+    psx_ws_new_frame();
+    pending_ot = NULL;
+    if (psx_interp_enabled) {
+        int ax, ay, found = ot_area(p, &ax, &ay);
+        int thirty_fps = last_ot_vblank != 0 && now - last_ot_vblank >= 2;
+        last_ot_vblank = now;
+        psx_interp_frame_done();
+        if (found && thirty_fps && have_prev_frame) {
+            pending_ot = p;
+            pending_at = now + 1;
+            if (ax == disp_env.disp.x && ay == disp_env.disp.y) {
+                walk_ot(p, 1, 0, 0);
+                pending_interp = 0;
+                pending_before = 0;
+                pending_dx = pending_dy = 0;
+            } else {
+                walk_ot(p, 0, 0, 0);
+                pending_interp = 1;
+                pending_before = 1;
+                pending_dx = disp_env.disp.x - ax;
+                pending_dy = disp_env.disp.y - ay;
+            }
+            draw_done_pending = 1;
+            return;
+        }
+        have_prev_frame = 1;
+    }
+    walk_ot(p, 0, 0, 0);
     draw_done_pending = 1;
+}
+
+static void run_pending(int before_present)
+{
+    if (!pending_ot || pending_before != before_present || psx_vblank_count() < pending_at)
+        return;
+    psx_gpu_push_state();
+    walk_ot(pending_ot, pending_interp, pending_dx, pending_dy);
+    psx_gpu_pop_state();
+    pending_ot = NULL;
 }
 
 void DrawPrim(void *p)

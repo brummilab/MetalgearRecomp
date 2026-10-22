@@ -146,6 +146,10 @@ class Gen:
         self.n_out = len(outputs)
         self.regs = set()
         self.body = []
+        # register -> address expression it was last loaded from (lw from an
+        # operand base), used to tell the 60 fps interpolation which matrix
+        # the GTE's rotation registers came from
+        self.loaded_from = {}
 
     def reg(self, tok):
         tok = tok.strip()
@@ -189,6 +193,9 @@ class Gen:
         # stack pointer juggling (SetSpadStack & co.) is meaningless natively
         if op in ('move', 'addiu', 'addi', 'addu', 'subu', 'lw', 'or') and args and self.is_sp(args[0]):
             return
+        if op not in ('lw', 'lh', 'lhu', 'lb', 'lbu', 'ctc2', 'mtc2', 'lwc2', 'swc2', 'sw', 'sh', 'sb') \
+                and args and not self.is_sp(args[0]) and args[0].startswith(('$', '%')):
+            self.loaded_from.pop(self.reg(args[0]), None)
         if op == 'cop2':
             b.append('GTE_OP(%s);' % args[0])
         elif op == '.word':
@@ -206,12 +213,19 @@ class Gen:
             b.append('%s = GTE_RD(%d);' % (self.reg(args[0]), self.cop2(args[1])))
         elif op == 'ctc2':
             b.append('GTE_WC(%d, %s);' % (self.cop2(args[1]), self.reg(args[0])))
+            if self.cop2(args[1]) == 0 and self.reg(args[0]) in self.loaded_from:
+                b.append('GTE_NOTE_RT(%s);' % self.loaded_from[self.reg(args[0])])
         elif op == 'cfc2':
             b.append('%s = GTE_RC(%d);' % (self.reg(args[0]), self.cop2(args[1])))
         elif op in ('lw', 'lh', 'lhu', 'lb', 'lbu'):
             t = {'lw': 'unsigned int', 'lh': 'short', 'lhu': 'unsigned short',
                  'lb': 'signed char', 'lbu': 'unsigned char'}[op]
-            b.append('%s = (unsigned int)(int)*(%s *)%s;' % (self.reg(args[0]), t, self.mem(args[1])))
+            addr = self.mem(args[1])
+            b.append('%s = (unsigned int)(int)*(%s *)%s;' % (self.reg(args[0]), t, addr))
+            if op == 'lw' and '_o' in addr:
+                self.loaded_from[self.reg(args[0])] = addr
+            else:
+                self.loaded_from.pop(self.reg(args[0]), None)
         elif op in ('sw', 'sh', 'sb'):
             t = {'sw': 'unsigned int', 'sh': 'unsigned short', 'sb': 'unsigned char'}[op]
             src = '0u' if self.is_sp(args[0]) else self.reg(args[0])

@@ -21,6 +21,9 @@ int          psx_gpu_set_scale(int scale);
 const uint16_t *psx_gpu_display(int *stride, int *shift);
 extern int   psx_gte_widescreen;
 void         psx_ws_init(int widescreen, int fit_hud);
+void         psx_interp_init(int enable);
+void         psx_gpu_vblank(void);
+DISPENV     *PutDispEnv(DISPENV *env);
 long RotTransPers3(SVECTOR *v0, SVECTOR *v1, SVECTOR *v2, long *sxy0, long *sxy1, long *sxy2, long *p, long *flag);
 extern uint16_t psx_vram[];
 
@@ -448,6 +451,93 @@ static void test_widescreen_hud(void)
     psx_ws_init(0, 0);
 }
 
+/* ---- 60 fps interpolation ------------------------------------------------------------ */
+
+/* one game frame: a 20x20 world square at x = wx, drawn into area_x; returns the OT */
+static u_long *interp_frame(int wx, int area_x, u_long *ot, uint32_t *pkt)
+{
+    SVECTOR a = { 0, 0, 0, 0 }, b = { 20, 0, 0, 0 }, c = { 0, 20, 0, 0 }, rot = { 0, 0, 0, 0 };
+    static MATRIX m;   /* one object: same matrix address every frame */
+    long s0, s1, s2, p, flag;
+    uint32_t *env = pkt, *tri = pkt + 8;
+
+    RotMatrix(&rot, &m);
+    m.t[0] = wx; m.t[1] = 0; m.t[2] = 1000;
+    SetRotMatrix(&m);
+    SetTransMatrix(&m);
+    RotTransPers3(&a, &b, &c, &s0, &s1, &s2, &p, &flag);
+
+    env[0] = 6u << 24;
+    env[1] = 0xE3000000u | area_x;
+    env[2] = 0xE4000000u | (area_x + 319) | (239 << 10);
+    env[3] = 0xE5000000u | (area_x & 0x7FF);
+    env[4] = 0x02000000u; env[5] = area_x; env[6] = 320 | (240 << 16);
+    tri[0] = 4u << 24; tri[1] = 0x200000FFu;
+    tri[2] = (uint32_t)s0; tri[3] = (uint32_t)s1; tri[4] = (uint32_t)s2;
+    ClearOTagR(ot, 3);
+    tri[0] |= ot[1] & 0xFFFFFF; ot[1] = (u_long)((uintptr_t)tri & 0xFFFFFF);
+    env[0] |= ot[2] & 0xFFFFFF; ot[2] = (u_long)((uintptr_t)env & 0xFFFFFF);
+    return &ot[2];
+}
+
+/* leftmost red pixel in row y of the area at area_x */
+static int red_left(int area_x, int y)
+{
+    int x;
+    for (x = 0; x < 320; x++)
+        if (px(area_x + x, y) == 0x1F)
+            return x;
+    return -1;
+}
+
+static void test_interp(void)
+{
+    static u_long ot[2][3];
+    static uint32_t pkt[2][16];
+    DISPENV disp;
+    int y = 125;
+
+    psx_interp_init(1);
+    psx_gpu_reset();
+    psx_gte_write_ctrl(24, 160 << 16);
+    psx_gte_write_ctrl(25, 120 << 16);
+    psx_gte_write_ctrl(26, 1000);
+    memset(&disp, 0, sizeof(disp));
+    disp.disp.w = 320; disp.disp.h = 240;
+
+    /* displayed buffer = drawing buffer: interpolated picture first */
+    PutDispEnv(&disp);
+    fake_vblank = 100;
+    DrawOTag(interp_frame(0, 0, ot[0], pkt[0]));
+    CHECK(red_left(0, y) == 160, "frame 1 at x=%d (want 160)", red_left(0, y));
+    fake_vblank += 2;
+    DrawOTag(interp_frame(20, 0, ot[1], pkt[1]));
+    CHECK(red_left(0, y) == 170, "in-between picture at x=%d (want 170)", red_left(0, y));
+    fake_vblank++;
+    psx_gpu_vblank();
+    CHECK(red_left(0, y) == 180, "real frame 2 at x=%d (want 180)", red_left(0, y));
+
+    /* back buffer style: frame drawn at x=320 while x=0 is on screen */
+    fake_vblank += 1;
+    DrawOTag(interp_frame(40, 320, ot[0], pkt[0]));
+    CHECK(red_left(320, y) == 200, "back buffer frame at x=%d (want 200)", red_left(320, y));
+    CHECK(red_left(0, y) == 180, "screen must still show frame 2 (x=%d)", red_left(0, y));
+    fake_vblank++;
+    psx_gpu_vblank();
+    CHECK(red_left(0, y) == 190, "in-between picture on screen at x=%d (want 190)", red_left(0, y));
+
+    /* camera cut (100 px jump): the in-between picture is not blended */
+    disp.disp.x = 320;
+    PutDispEnv(&disp);
+    fake_vblank += 1;
+    DrawOTag(interp_frame(140, 0, ot[1], pkt[1]));
+    fake_vblank++;
+    psx_gpu_vblank();
+    CHECK(red_left(320, y) == 300, "after a cut: x=%d (want 300, unblended)", red_left(320, y));
+
+    psx_interp_init(0);
+}
+
 /* ---- upscaled rendering ---------------------------------------------------------------- */
 
 static void test_hires(int scale)
@@ -514,6 +604,7 @@ int main(int argc, char **argv)
     test_movie();
     test_reverb();
     test_widescreen_hud();
+    test_interp();
     if (argc > 1)
         write_ppm(argv[1]);
     test_hires(2);
