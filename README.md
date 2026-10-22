@@ -1,4 +1,4 @@
-# metalgeardecomp
+# MetalgearRecomp
 
 Arbeitsrepo für den Decomp von **Metal Gear Solid** (PlayStation, 1998).
 
@@ -19,7 +19,7 @@ Quellcode und die Toolchain sind als Git-Submodule eingebunden.
 ## Aufbau
 
 ```
-metalgeardecomp/
+MetalgearRecomp/
 ├── upstream/
 │   ├── mgs_reversing/   # Submodul: Decomp-Quellcode, Assembler, Build-System
 │   └── psyq_sdk/        # Submodul: PsyQ-Compiler/-Linker (Sony PS1 SDK)
@@ -34,8 +34,8 @@ metalgeardecomp/
 ## Schnellstart (Linux / WSL)
 
 ```bash
-git clone --recursive https://github.com/brummilab/metalgeardecomp.git
-cd metalgeardecomp
+git clone --recursive https://github.com/brummilab/MetalgearRecomp.git
+cd MetalgearRecomp
 scripts/setup.sh
 scripts/build.sh              # SLPM_862.47, Disc 1/2
 scripts/build.sh vr_exe       # SLPM_862.49, VR-Disc
