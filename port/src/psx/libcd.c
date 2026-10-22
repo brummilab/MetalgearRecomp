@@ -26,6 +26,7 @@ static long     image_sectors;
 
 static int      pos;             /* next LBA to read */
 static int      reading;
+static int      streaming;     /* CdRead2 stream mode */
 static u_char   mode;
 static u_char   last_result[8];
 static CdlCB    ready_cb;
@@ -145,12 +146,14 @@ int CdControl(u_char com, u_char *param, u_char *result)
         if (param)
             set_loc(param);
         reading = 1;
+        streaming = 0;
         last_vblank = psx_vblank_count();
         break;
     case CdlPause:
     case CdlStop:
     case CdlStandby:
         reading = 0;
+        streaming = 0;
         break;
     case CdlSetmode:
         if (param)
@@ -210,10 +213,17 @@ int CdGetSector(void *madr, int size)
 }
 
 /* called from the interrupt dispatcher: deliver the next sectors */
+static void stream_interrupt(void);
+
 void psx_cd_interrupt(void)
 {
     uint32_t now = psx_vblank_count();
     int budget;
+
+    if (streaming && reading) {
+        stream_interrupt();
+        return;
+    }
 
     if (!reading || !ready_cb)
         return;
@@ -234,4 +244,205 @@ void psx_cd_interrupt(void)
         pos++;
         ready_cb(1 /* CdlDataReady */, res);
     }
+}
+
+/* ---- streaming (CdRead2 + libcd St* functions) ------------------------------------- */
+
+/*
+ * Movies are read with CdRead2(CdlModeStream2 | CdlModeSpeed | CdlModeRT):
+ * the drive delivers sectors at its real data rate. STR sectors (data
+ * starting with the 0x0160 magic and a 32-byte StHEADER) are assembled into
+ * frames, XA audio sectors are decoded and fed to the SPU. The game polls
+ * finished frames with StGetNext() and releases them with StFreeRing().
+ */
+
+void psx_xa_decode_sector(const uint8_t *subheader, const uint8_t *data);
+void psx_xa_reset(void);
+void psx_spu_xa_flush(void);
+
+#define STR_MAGIC       0x0160
+#define STR_HEADER      32
+#define STR_PAYLOAD     2016
+#define STR_MAX_SECTORS 40
+#define STR_SLOTS       6
+
+enum { SLOT_FREE, SLOT_FILLING, SLOT_READY, SLOT_LOCKED };
+
+typedef struct {
+    int      state;
+    uint32_t frame;          /* StHEADER.frameCount */
+    unsigned seq;            /* delivery order */
+    int      sectors, received;
+    uint8_t  header[STR_HEADER];
+    uint8_t  data[STR_MAX_SECTORS * STR_PAYLOAD];
+} StrSlot;
+
+static StrSlot  slots[STR_SLOTS];
+static unsigned slot_seq;
+static long     stream_mode;
+static double   stream_budget;
+
+static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+static uint32_t rd32le(const uint8_t *p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24); }
+
+static void stream_reset(void)
+{
+    int i;
+    for (i = 0; i < STR_SLOTS; i++)
+        slots[i].state = SLOT_FREE;
+    slot_seq = 0;
+}
+
+static void stream_video_sector(const uint8_t *d)
+{
+    uint16_t sec = rd16(d + 4), nsec = rd16(d + 6);
+    uint32_t frame = rd32le(d + 8);
+    StrSlot *s = NULL;
+    int i;
+
+    if (nsec == 0 || nsec > STR_MAX_SECTORS || sec >= nsec)
+        return;
+    for (i = 0; i < STR_SLOTS; i++)
+        if (slots[i].state == SLOT_FILLING && slots[i].frame == frame)
+            s = &slots[i];
+    if (!s) {
+        for (i = 0; i < STR_SLOTS && !s; i++)
+            if (slots[i].state == SLOT_FREE)
+                s = &slots[i];
+        if (!s)
+            return;     /* ring full: the frame is dropped, as on the console */
+        s->state = SLOT_FILLING;
+        s->frame = frame;
+        s->sectors = nsec;
+        s->received = 0;
+        memcpy(s->header, d, STR_HEADER);
+    }
+    memcpy(s->data + (size_t)sec * STR_PAYLOAD, d + STR_HEADER, STR_PAYLOAD);
+    if (++s->received >= s->sectors) {
+        s->state = SLOT_READY;
+        s->seq = slot_seq++;
+    }
+}
+
+static void stream_sector(void)
+{
+    const uint8_t *sub = sector + 4;   /* file, channel, submode, coding */
+    if (raw && (sub[2] & 0x04)) {
+        if (stream_mode & 0x40 /* CdlModeRT */)
+            psx_xa_decode_sector(sub, sector + 12);
+        return;
+    }
+    if (rd16(sector + 12) == STR_MAGIC)
+        stream_video_sector(sector + 12);
+}
+
+/* called from psx_cd_interrupt() while streaming */
+static void stream_interrupt(void)
+{
+    uint32_t now = psx_vblank_count();
+    double rate = (stream_mode & 0x80) ? 150.0 : 75.0;   /* sectors per second */
+
+    if (now == last_vblank)
+        return;
+    stream_budget += (now - last_vblank) * rate / 59.94;
+    if (stream_budget > 30)
+        stream_budget = 30;
+    last_vblank = now;
+    while (stream_budget >= 1.0 && streaming) {
+        stream_budget -= 1.0;
+        if (!load_sector(pos)) {
+            streaming = 0;
+            reading = 0;
+            break;
+        }
+        pos++;
+        stream_sector();
+    }
+}
+
+int CdRead2(long m)
+{
+    stream_mode = m;
+    streaming = 1;
+    reading = 1;
+    stream_budget = 0;
+    last_vblank = psx_vblank_count();
+    psx_xa_reset();
+    return 1;
+}
+
+int CdReady(int m, u_char *result)
+{
+    (void)m;
+    if (result)
+        memcpy(result, last_result, 8);
+    return 0; /* CdlNoIntr */
+}
+
+typedef struct { u_char minute, second, sector, track; } CdlLOC;
+
+CdlLOC *CdIntToPos(int i, CdlLOC *p)
+{
+    i += PREGAP;
+    p->sector = i2bcd(i % 75);
+    p->second = i2bcd((i / 75) % 60);
+    p->minute = i2bcd(i / 75 / 60);
+    p->track = 0;
+    return p;
+}
+
+int CdPosToInt(CdlLOC *p)
+{
+    return (bcd2i(p->minute) * 60 + bcd2i(p->second)) * 75 + bcd2i(p->sector) - PREGAP;
+}
+
+void StSetRing(u_long *ring, u_long size)
+{
+    (void)ring; (void)size; /* frames are kept in the slots above */
+    stream_reset();
+}
+
+void StSetStream(u_long mode, u_long start, u_long end, void (*f1)(void), void (*f2)(void))
+{
+    (void)mode; (void)start; (void)end; (void)f1; (void)f2;
+    stream_reset();
+}
+
+void StUnSetRing(void)
+{
+    streaming = 0;
+    stream_reset();
+    psx_spu_xa_flush();
+}
+
+void StClearRing(void) { stream_reset(); }
+
+u_long StGetNext(u_long **addr, u_long **header)
+{
+    StrSlot *best = NULL;
+    int i;
+
+    for (i = 0; i < STR_SLOTS; i++)
+        if (slots[i].state == SLOT_READY && (!best || slots[i].seq < best->seq))
+            best = &slots[i];
+    if (!best) {
+        psx_idle(); /* let the drive deliver more sectors */
+        return 1;
+    }
+    best->state = SLOT_LOCKED;
+    *addr = (u_long *)best->data;
+    *header = (u_long *)best->header;
+    return 0;
+}
+
+u_long StFreeRing(u_long *base)
+{
+    int i;
+    for (i = 0; i < STR_SLOTS; i++) {
+        if ((u_long *)slots[i].data == base) {
+            slots[i].state = SLOT_FREE;
+            return 0;
+        }
+    }
+    return 1;
 }

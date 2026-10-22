@@ -19,14 +19,15 @@ Dieses Repo ergänzt das um:
 
 1. **Nativer PC-Port** ([`port/`](port/README.md)): eigene Laufzeitschicht,
    die PS1-Hardware und Sonys PsyQ-Bibliotheken ersetzt (Software-GPU,
-   GTE-Emulation, SPU, CD aus Disc-Image, Memory Card, Controller über SDL2).
+   GTE-Emulation, SPU, CD aus Disc-Image, Filmwiedergabe mit MDEC und
+   XA-Audio, Memory Card, Controller über SDL2).
    Läuft unter Windows und Linux als 32-Bit-Programm.
 2. **Matching-Build** der PS1-Version unter Linux/WSL (Wine), inklusive
    Hash-Prüfung gegen das Original.
 
 > ⚠️ **Stand des PC-Ports:** Er baut, linkt und bootet auf Linux und Windows.
 > Mit einem echten Disc-Image ist der Spielablauf noch **nicht getestet**.
-> Titelbildschirm, Filmsequenzen und einige Stages fehlen noch, Details siehe
+> Titelbildschirm und einige Stages fehlen noch upstream, Details siehe
 > [port/README.md](port/README.md).
 
 ## Aufbau

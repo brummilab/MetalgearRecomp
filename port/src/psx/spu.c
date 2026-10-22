@@ -3,7 +3,8 @@
  * with hardware-style ADSR envelopes, loop points, the SPU IRQ (used by the
  * game's streaming code) and a mixer feeding the host audio device.
  *
- * Not emulated yet: reverb, noise, pitch LFO, CD/XA audio input.
+ * CD audio input: XA-ADPCM decoded by xa.c, resampled to 44.1 kHz here.
+ * Not emulated yet: reverb, noise, pitch LFO.
  */
 #include "psx.h"
 
@@ -77,6 +78,9 @@ typedef void (*SpuIRQCallbackProc)(void);
 
 #define C_MVOLL  (1 << 0)
 #define C_MVOLR  (1 << 1)
+#define C_CDVOLL (1 << 6)
+#define C_CDVOLR (1 << 7)
+#define C_CDMIX  (1 << 9)
 
 enum { ENV_OFF, ENV_ATTACK, ENV_DECAY, ENV_SUSTAIN, ENV_RELEASE };
 
@@ -111,6 +115,45 @@ static int       irq_enabled;
 static int       irq_pending;
 static SpuIRQCallbackProc irq_callback;
 static double    sample_accum;
+
+/* CD (XA) audio input, already resampled to OUTPUT_RATE */
+#define XA_RING 65536
+static int16_t   xa_ring[XA_RING][2];
+static unsigned  xa_read, xa_write;
+static int16_t   cd_vol_l, cd_vol_r;
+static int       cd_mix;
+static double    xa_phase;
+static int16_t   xa_last[2];
+
+void psx_spu_xa_queue(const int16_t *lr, int frames, int rate)
+{
+    double step = (double)rate / OUTPUT_RATE;
+    int i = 0;
+    /* linear interpolation between the previous and the current input frame */
+    while (i < frames) {
+        double f = xa_phase;
+        int16_t l = (int16_t)(xa_last[0] + (lr[i * 2] - xa_last[0]) * f);
+        int16_t r = (int16_t)(xa_last[1] + (lr[i * 2 + 1] - xa_last[1]) * f);
+        if (xa_write - xa_read < XA_RING) {
+            xa_ring[xa_write % XA_RING][0] = l;
+            xa_ring[xa_write % XA_RING][1] = r;
+            xa_write++;
+        }
+        xa_phase += step;
+        while (xa_phase >= 1.0 && i < frames) {
+            xa_phase -= 1.0;
+            xa_last[0] = lr[i * 2];
+            xa_last[1] = lr[i * 2 + 1];
+            i++;
+        }
+    }
+}
+
+void psx_spu_xa_flush(void)
+{
+    xa_read = xa_write = 0;
+    xa_phase = 0;
+}
 
 /* ---- ADPCM ------------------------------------------------------------------ */
 
@@ -302,10 +345,23 @@ static void mix(int frames)
                 l += (s * v->vol_l) >> 15;
                 r += (s * v->vol_r) >> 15;
             }
+            if (xa_read != xa_write) {
+                if (cd_mix) {
+                    l += (xa_ring[xa_read % XA_RING][0] * cd_vol_l) >> 15;
+                    r += (xa_ring[xa_read % XA_RING][1] * cd_vol_r) >> 15;
+                }
+                xa_read++;
+            }
             l = (l * main_vol_l) >> 15;
             r = (r * main_vol_r) >> 15;
-            if (l > 32767) l = 32767; if (l < -32768) l = -32768;
-            if (r > 32767) r = 32767; if (r < -32768) r = -32768;
+            if (l > 32767)
+                l = 32767;
+            if (l < -32768)
+                l = -32768;
+            if (r > 32767)
+                r = 32767;
+            if (r < -32768)
+                r = -32768;
             buf[i * 2] = (int16_t)l;
             buf[i * 2 + 1] = (int16_t)r;
         }
@@ -481,6 +537,12 @@ void SpuSetCommonAttr(SpuCommonAttr *a)
         main_vol_l = vol15(a->mvol.left);
     if (a->mask == 0 || (a->mask & C_MVOLR))
         main_vol_r = vol15(a->mvol.right);
+    if (a->mask == 0 || (a->mask & C_CDVOLL))
+        cd_vol_l = a->cd.volume.left;
+    if (a->mask == 0 || (a->mask & C_CDVOLR))
+        cd_vol_r = a->cd.volume.right;
+    if (a->mask == 0 || (a->mask & C_CDMIX))
+        cd_mix = a->cd.mix != 0;
 }
 
 /* ---- IRQ ------------------------------------------------------------------------ */

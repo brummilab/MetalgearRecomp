@@ -19,6 +19,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 | 2026-10-22 | Upstream-Code wird nicht verändert; Build erzeugt übersetzte Kopie (`asm2c.py`) | Upstream bleibt aktualisierbar; Assembler → C und wenige Fixups automatisch |
 | 2026-10-22 | Software-Rasterizer statt OpenGL | Exaktes PS1-Verhalten (VRAM, Halbtransparenz, Render-to-Texture) ohne Sonderfälle; Hochauflösung später als Option |
 | 2026-10-22 | Interrupts an sicheren Punkten statt echter Unterbrechung | Nativer Code ist nicht unterbrechbar; Task-Wechsel im Interrupt über nachgebildete Kernel-Tabellen |
+| 2026-10-22 | MDEC-Ausgabe synchron statt per DMA-Interrupt | Spiel-Callback wird sofort bedient; Folgeanforderungen aus dem Callback laufen in einer Schleife statt rekursiv |
 | 2026-10-22 | Overlays fest eingebunden, je Overlay vorgelinkt mit lokalisierten Symbolen | Eine einzige Programmdatei, keine DLL-/dlopen-Probleme, keine Symbolkonflikte zwischen Overlays |
 
 ## Technik
@@ -27,7 +28,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **PC-Port:** CMake + Ninja, GCC/Clang (Linux, `-m32`) bzw. MinGW-w64 i686 (Windows), SDL2
 - **Laufzeitschicht** (`port/src/psx`): Kernel/Threads (Fibers), GTE, GPU (Software), SPU, CD (.bin/.iso), Pad, Memory Card (.mcd)
 - **Werkzeuge** (`port/tools`): `gen_sources.py`, `asm2c.py`, `link_overlay.py`, `gen_overlay_table.py`
-- **Tests:** `port/tests/test_runtime.c` (GTE-Projektion, NCLIP, Trigonometrie, GPU-Rasterung)
+- **Tests:** `port/tests/test_runtime.c` (GTE-Projektion, NCLIP, Trigonometrie, GPU-Rasterung, Filmkette Streaming→VLC→MDEC + XA)
 
 ## Struktur
 
@@ -49,8 +50,9 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 ## Offene Punkte
 
 - [ ] Test mit eigenem Disc-Image (SLPM-86247), Fehler beheben
-- [ ] Filmsequenzen: CD-Streaming (`St*`) + MDEC-Dekoder
-- [ ] XA-Audio (Musik/Codec-Stimmen), SPU-Reverb
+- [x] Filmsequenzen: CD-Streaming (`St*`), VLC, MDEC, XA-Audio
+- [ ] Filmwiedergabe mit echten Filmen prüfen
+- [ ] SPU-Reverb
 - [ ] Titelbildschirm (Overlay `title`) – wartet auf Upstream; bis dahin Start im Stage-Select
 - [ ] Fehlende Stages upstream: brf, camera, change, d18a(r), rank, s03d, s07b(r), s08b(r), s11d, s11g, s14e, s15c, s19b(r), title
 - [ ] Optional: Hochauflösendes Rendering, Breitbild, 60-fps-Optionen
@@ -61,3 +63,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 
 - **2026-10-22:** Repo angelegt, Submodule eingebunden, Setup-/Build-Skripte, README und Workflow-Doku erstellt. PS1-Matching-Build verifiziert.
 - **2026-10-22:** Repo umbenannt in MetalgearRecomp. Nativer PC-Port begonnen und lauffähig bis zum Boot: Build-System, Assembler-Übersetzer, komplette Laufzeitschicht (Kernel, GTE, GPU, SPU, CD, Pad, Memory Card), Overlay-Einbindung, Linux- und Windows-Build, Selbsttests.
+- **2026-10-22:** Filmwiedergabe eingebaut: CD-Streaming mit echter Laufwerksrate, STR-Frame-Zusammensetzung, VLC-Dekoder (STR v2/v3), MDEC (IDCT, YUV→RGB), XA-ADPCM-Filmton im SPU-Mixer. Ende-zu-Ende-Test mit selbst erzeugtem Disc-Image.
