@@ -17,6 +17,9 @@ void         psx_gte_write_ctrl(int reg, unsigned int value);
 void         psx_gte_command(unsigned int cmd);
 void         psx_gpu_exec(const uint32_t *p, int len);
 void         psx_gpu_reset(void);
+int          psx_gpu_set_scale(int scale);
+const uint16_t *psx_gpu_display(int *stride, int *shift);
+extern int   psx_gte_widescreen;
 extern uint16_t psx_vram[];
 
 long RotTransPers(SVECTOR *v0, long *sxy, long *p, long *flag);
@@ -34,7 +37,7 @@ void DrawOTag(u_long *p);
 uint16_t plat_pad_buttons(int port) { (void)port; return 0; }
 uint64_t plat_ticks_us(void) { return 0; }
 void plat_sleep_us(uint64_t us) { (void)us; }
-void plat_present(const uint16_t *v, int x, int y, int w, int h, int r, int e) { (void)v; (void)x; (void)y; (void)w; (void)h; (void)r; (void)e; }
+void plat_present(const uint16_t *v, int st, int sh, int x, int y, int w, int h, int r, int e) { (void)v; (void)st; (void)sh; (void)x; (void)y; (void)w; (void)h; (void)r; (void)e; }
 int  plat_pump_events(void) { return 1; }
 /* audio output: peak level of everything mixed since the last reset */
 static int audio_peak;
@@ -81,6 +84,11 @@ static void test_gte(void)
     CHECK((short)sxy == 260 && (short)(sxy >> 16) == 170, "RTPS screen xy = %d,%d (want 260,170)", (short)sxy, (short)(sxy >> 16));
     CHECK(otz == 250, "RTPS otz = %ld (want 250)", otz);
     CHECK((flag & 0x80000000) == 0, "RTPS flag = %08lx (want no error)", flag);
+
+    psx_gte_widescreen = 1;
+    RotTransPers(&v, &sxy, &p, &flag);
+    CHECK((short)sxy == 235 && (short)(sxy >> 16) == 170, "widescreen RTPS = %d,%d (want 235,170)", (short)sxy, (short)(sxy >> 16));
+    psx_gte_widescreen = 0;
 
     /* point at twice the distance: half the offset from the centre */
     m.t[2] = 2000;
@@ -382,6 +390,49 @@ static void test_reverb(void)
     CHECK(wet > 50, "reverb tail missing (peak %d)", wet);
 }
 
+/* ---- upscaled rendering ---------------------------------------------------------------- */
+
+static void test_hires(int scale)
+{
+    int stride, shift, x, y, mism = 0;
+    const uint16_t *hv;
+
+    CHECK(psx_gpu_set_scale(scale) == scale, "render scale %d not available", scale);
+    test_gpu();                       /* same scene; native results are checked there */
+    hv = psx_gpu_display(&stride, &shift);
+    CHECK(shift == (scale == 4 ? 2 : 1), "display shift %d", shift);
+    /* every upscaled block must agree with its native pixel away from edges */
+    for (y = 1; y < 239; y++)
+        for (x = 1; x < 319; x++) {
+            uint16_t n = px(x, y);
+            if (px(x - 1, y) != n || px(x + 1, y) != n || px(x, y - 1) != n || px(x, y + 1) != n)
+                continue;    /* edge or gradient: upscaling may differ */
+            if ((hv[((y << shift) + (1 << shift) / 2) * stride + (x << shift) + (1 << shift) / 2] & 0x7FFF) != (n & 0x7FFF))
+                mism++;
+        }
+    CHECK(mism == 0, "scale %d: %d upscaled pixels differ from the original", scale, mism);
+    /* textured sprite: texels come through at full resolution */
+    CHECK((hv[(200 << shift) * stride + (203 << shift)] & 0x7FFF) == 8, "scale %d: sprite texel %04x", scale,
+          hv[(200 << shift) * stride + (203 << shift)]);
+}
+
+static void write_hires_ppm(const char *path)
+{
+    int stride, shift, x, y;
+    const uint16_t *hv = psx_gpu_display(&stride, &shift);
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return;
+    fprintf(f, "P6\n%d %d\n255\n", 320 << shift, 240 << shift);
+    for (y = 0; y < (240 << shift); y++)
+        for (x = 0; x < (320 << shift); x++) {
+            uint16_t c = hv[y * stride + x];
+            unsigned char rgb[3] = { (unsigned char)((c & 31) << 3), (unsigned char)(((c >> 5) & 31) << 3), (unsigned char)(((c >> 10) & 31) << 3) };
+            fwrite(rgb, 1, 3, f);
+        }
+    fclose(f);
+}
+
 static void write_ppm(const char *path)
 {
     FILE *f = fopen(path, "wb");
@@ -406,6 +457,11 @@ int main(int argc, char **argv)
     test_reverb();
     if (argc > 1)
         write_ppm(argv[1]);
+    test_hires(2);
+    test_hires(4);
+    if (argc > 2)
+        write_hires_ppm(argv[2]);
+    psx_gpu_set_scale(1);
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "all tests passed", failures, failures == 1 ? "" : "s");
     return failures != 0;
 }

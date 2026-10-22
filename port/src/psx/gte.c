@@ -14,6 +14,8 @@ typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t  u8;
 
+int psx_gte_widescreen;
+
 static u32 D[32]; /* data registers */
 static u32 C[32]; /* control registers */
 
@@ -374,7 +376,8 @@ static void rtp(int n, int sf, int lm, int last)
     push_sz(m3 >> 12);
     div = unr_divide(H, (u16)SZ3);
 
-    x = mac0_set(div * (s16)IR1 + OFX);
+    /* widescreen: squeeze x by 3/4, the picture is shown stretched to 16:9 */
+    x = mac0_set((psx_gte_widescreen ? div * (s16)IR1 * 3 / 4 : div * (s16)IR1) + OFX);
     y = mac0_set(div * (s16)IR2 + OFY);
     SXY0 = SXY1;
     SXY1 = SXY2;

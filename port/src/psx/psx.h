@@ -95,6 +95,8 @@ uint32_t psx_vblank_count(void);
 /* ---- subsystems ---------------------------------------------------------- */
 
 void psx_gpu_init(void);
+int  psx_gpu_set_scale(int scale);   /* 1, 2 or 4; returns the scale in use */
+extern int psx_gte_widescreen;      /* squeeze 3D projection for 16:9 */
 void psx_gpu_vblank(void);          /* present the display area */
 void psx_cd_init(const char *image);
 void psx_cd_interrupt(void);        /* advance pending CD reads */
@@ -110,10 +112,11 @@ void mgs_native_frame(void);
 
 /* ---- platform (SDL) ------------------------------------------------------ */
 
-int      plat_init(int scale, int fullscreen);
+int      plat_init(int scale, int fullscreen, int render_scale, int widescreen);
 void     plat_shutdown(void);
 int      plat_pump_events(void);    /* returns 0 when the user quits */
-void     plat_present(const uint16_t *vram, int x, int y, int w, int h, int rgb24, int enabled);
+void     plat_present(const uint16_t *vram, int stride, int shift, int x, int y, int w, int h,
+                      int rgb24, int enabled);
 uint16_t plat_pad_buttons(int port); /* PS1 button bits, active high */
 uint64_t plat_ticks_us(void);
 void     plat_sleep_us(uint64_t us);

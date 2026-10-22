@@ -7,6 +7,12 @@
  * and area clipping, top-left fill convention, affine texture mapping,
  * texture windows, CLUTs, the four semi-transparency modes, texture
  * modulation, dithering and the mask bit.
+ *
+ * Higher resolution: with a render scale of 2 or 4 every primitive is drawn
+ * twice - into the original VRAM, which stays authoritative for CPU reads,
+ * palettes and indexed textures, and into an upscaled copy that is shown on
+ * screen. 15-bit textures are sampled from the upscaled copy, so effects that
+ * render into textures keep their detail.
  */
 #include "psx.h"
 
@@ -14,6 +20,7 @@
 #include <string.h>
 
 typedef int32_t  s32;
+typedef int64_t  s64;
 typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t  u8;
@@ -24,6 +31,19 @@ typedef uint8_t  u8;
 uint16_t psx_vram[VRAM_W * VRAM_H];
 
 #define PIX(x, y) psx_vram[((y) & (VRAM_H - 1)) * VRAM_W + ((x) & (VRAM_W - 1))]
+
+/* a drawing target: the original VRAM or its upscaled copy */
+typedef struct {
+    uint16_t *pix;
+    int       shift;            /* log2 of the scale */
+    int       stride;           /* pixels per row */
+    int       wmask, hmask;
+} Target;
+
+static Target native = { psx_vram, 0, VRAM_W, VRAM_W - 1, VRAM_H - 1 };
+static Target hires;            /* pix == NULL when the scale is 1 */
+
+#define TPIX(t, x, y) (t)->pix[((y) & (t)->hmask) * (t)->stride + ((x) & (t)->wmask)]
 
 /* ---- drawing state (GP0 E1..E6) ----------------------------------------------- */
 
@@ -58,6 +78,36 @@ static void set_texwindow(u32 v)
     gs.tw_off_y = ((v >> 15) & 0x1F) * 8;
 }
 
+/* ---- render scale ---------------------------------------------------------------- */
+
+int psx_gpu_set_scale(int scale)
+{
+    int shift = scale >= 4 ? 2 : scale >= 2 ? 1 : 0;
+    free(hires.pix);
+    memset(&hires, 0, sizeof(hires));
+    if (shift) {
+        hires.shift = shift;
+        hires.stride = VRAM_W << shift;
+        hires.wmask = (VRAM_W << shift) - 1;
+        hires.hmask = (VRAM_H << shift) - 1;
+        hires.pix = (uint16_t *)calloc((size_t)hires.stride * (VRAM_H << shift), sizeof(uint16_t));
+        if (!hires.pix) {
+            memset(&hires, 0, sizeof(hires));
+            shift = 0;
+        }
+    }
+    return 1 << shift;
+}
+
+/* VRAM to display: the upscaled copy if there is one */
+const uint16_t *psx_gpu_display(int *stride, int *shift)
+{
+    const Target *t = hires.pix ? &hires : &native;
+    *stride = t->stride;
+    *shift = t->shift;
+    return t->pix;
+}
+
 /* ---- pixel pipeline ------------------------------------------------------------- */
 
 static const s32 dither_tab[4][4] = {
@@ -66,6 +116,11 @@ static const s32 dither_tab[4][4] = {
     { -3,  1, -4,  0 },
     {  3, -1,  2, -2 },
 };
+
+static inline s32 clamp(s32 v, s32 lo, s32 hi)
+{
+    return v < lo ? lo : v > hi ? hi : v;
+}
 
 static inline u16 blend(u16 back, u16 front, int mode)
 {
@@ -78,19 +133,16 @@ static inline u16 blend(u16 back, u16 front, int mode)
     case 2: r = br - fr; g = bg - fg; b = bb - fb; break;
     default: r = br + (fr >> 2); g = bg + (fg >> 2); b = bb + (fb >> 2); break;
     }
-    if (r < 0) r = 0;
-    if (r > 31) r = 31;
-    if (g < 0) g = 0;
-    if (g > 31) g = 31;
-    if (b < 0) b = 0;
-    if (b > 31) b = 31;
+    r = clamp(r, 0, 31);
+    g = clamp(g, 0, 31);
+    b = clamp(b, 0, 31);
     return (u16)(r | (g << 5) | (b << 10) | (front & 0x8000));
 }
 
 /* write one pixel; semi = semi-transparency requested for this pixel */
-static inline void plot(int x, int y, u16 c, int semi)
+static inline void plot(const Target *t, int x, int y, u16 c, int semi)
 {
-    u16 *p = &PIX(x, y);
+    u16 *p = &TPIX(t, x, y);
     if (gs.check_mask && (*p & 0x8000))
         return;
     if (semi)
@@ -107,12 +159,9 @@ static inline u16 rgb15(s32 r, s32 g, s32 b, int x, int y, int dither)
         s32 d = dither_tab[y & 3][x & 3];
         r += d; g += d; b += d;
     }
-    if (r < 0) r = 0;
-    if (r > 255) r = 255;
-    if (g < 0) g = 0;
-    if (g > 255) g = 255;
-    if (b < 0) b = 0;
-    if (b > 255) b = 255;
+    r = clamp(r, 0, 255);
+    g = clamp(g, 0, 255);
+    b = clamp(b, 0, 255);
     return (u16)((r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10));
 }
 
@@ -121,25 +170,29 @@ typedef struct {
     int clut_x, clut_y;
 } TexState;
 
-static inline u16 texel(const TexState *t, int u, int v)
+static inline int wrap_u(int u) { u &= 0xFF; return (u & ~gs.tw_mask_x) | (gs.tw_off_x & gs.tw_mask_x); }
+static inline int wrap_v(int v) { v &= 0xFF; return (v & ~gs.tw_mask_y) | (gs.tw_off_y & gs.tw_mask_y); }
+
+/* texel at texture coordinates in target units (u, v scaled by the target) */
+static inline u16 texel(const Target *t, const TexState *ts, int uh, int vh)
 {
-    u &= 0xFF;
-    v &= 0xFF;
-    u = (u & ~gs.tw_mask_x) | (gs.tw_off_x & gs.tw_mask_x);
-    v = (v & ~gs.tw_mask_y) | (gs.tw_off_y & gs.tw_mask_y);
-    switch (t->depth) {
+    int s = t->shift;
+    int u = wrap_u(uh >> s), v = wrap_v(vh >> s);
+    switch (ts->depth) {
     case 0: {
-        u16 w = PIX(t->tex_x + (u >> 2), t->tex_y + v);
-        int idx = (w >> ((u & 3) * 4)) & 0xF;
-        return PIX(t->clut_x + idx, t->clut_y);
+        u16 w = PIX(ts->tex_x + (u >> 2), ts->tex_y + v);
+        return PIX(ts->clut_x + ((w >> ((u & 3) * 4)) & 0xF), ts->clut_y);
     }
     case 1: {
-        u16 w = PIX(t->tex_x + (u >> 1), t->tex_y + v);
-        int idx = (w >> ((u & 1) * 8)) & 0xFF;
-        return PIX(t->clut_x + idx, t->clut_y);
+        u16 w = PIX(ts->tex_x + (u >> 1), ts->tex_y + v);
+        return PIX(ts->clut_x + ((w >> ((u & 1) * 8)) & 0xFF), ts->clut_y);
     }
     default:
-        return PIX(t->tex_x + u, t->tex_y + v);
+        if (s) {
+            int sub = (1 << s) - 1;
+            return TPIX(t, ((ts->tex_x + u) << s) | (uh & sub), ((ts->tex_y + v) << s) | (vh & sub));
+        }
+        return PIX(ts->tex_x + u, ts->tex_y + v);
     }
 }
 
@@ -160,39 +213,43 @@ typedef struct {
 
 enum { F_GOURAUD = 1, F_TEXTURED = 2, F_SEMI = 4, F_RAW = 8 };
 
-static inline int64_t edge(const Vtx *a, const Vtx *b, s32 px, s32 py)
+static inline s64 floor_div(s64 a, s64 b)
 {
-    return (int64_t)(b->x - a->x) * (py - a->y) - (int64_t)(b->y - a->y) * (px - a->x);
+    s64 q = a / b;
+    if ((a % b != 0) && ((a < 0) != (b < 0)))
+        q--;
+    return q;
 }
 
-/* top-left rule: an edge owns its pixels if it is a top or left edge */
-static inline int is_top_left(const Vtx *a, const Vtx *b)
+/* attribute plane: value(x, y) = base + dx * x + dy * y, 16.16 fixed point */
+typedef struct { s64 base, dx, dy; } Plane;
+
+static Plane plane(const Vtx *v0, const Vtx *v1, const Vtx *v2, s32 a0, s32 a1, s32 a2, s64 area)
 {
-    s32 dx = b->x - a->x, dy = b->y - a->y;
-    return (dy < 0) || (dy == 0 && dx > 0);
+    Plane p;
+    s64 nx = (s64)(a1 - a0) * (v2->y - v0->y) - (s64)(a2 - a0) * (v1->y - v0->y);
+    s64 ny = (s64)(a2 - a0) * (v1->x - v0->x) - (s64)(a1 - a0) * (v2->x - v0->x);
+    p.dx = (nx << 16) / area;
+    p.dy = (ny << 16) / area;
+    p.base = ((s64)a0 << 16) - p.dx * v0->x - p.dy * v0->y + (1 << 15);
+    return p;
 }
 
-static void draw_triangle(Vtx v0, Vtx v1, Vtx v2, int flags, const TexState *tex)
+static void draw_triangle(const Target *t, Vtx v0, Vtx v1, Vtx v2, int flags, const TexState *tex)
 {
-    int64_t area;
-    s32 minx, maxx, miny, maxy, x, y;
-    int bias0, bias1, bias2;
+    int s = t->shift, i;
+    s64 area;
+    s32 miny, maxy, cx0, cx1, y, minx, maxx;
     int dither;
-    Vtx t;
+    Vtx *v[3], tmp;
+    Plane pr, pg, pb, pu, pv;
+    struct { s64 a, b, c; } e[3];   /* edge: a*x + b*y + c >= 0 */
 
     v0.x += gs.off_x; v0.y += gs.off_y;
     v1.x += gs.off_x; v1.y += gs.off_y;
     v2.x += gs.off_x; v2.y += gs.off_y;
 
-    area = edge(&v0, &v1, v2.x, v2.y);
-    if (area == 0)
-        return;
-    if (area < 0) {
-        t = v1; v1 = v2; v2 = t;
-        area = -area;
-    }
-
-    /* the GPU skips polygons that are too large */
+    /* the GPU skips polygons that are too large (checked in GPU pixels) */
     minx = v0.x < v1.x ? v0.x : v1.x; if (v2.x < minx) minx = v2.x;
     maxx = v0.x > v1.x ? v0.x : v1.x; if (v2.x > maxx) maxx = v2.x;
     miny = v0.y < v1.y ? v0.y : v1.y; if (v2.y < miny) miny = v2.y;
@@ -200,61 +257,112 @@ static void draw_triangle(Vtx v0, Vtx v1, Vtx v2, int flags, const TexState *tex
     if (maxx - minx >= 1024 || maxy - miny >= 512)
         return;
 
-    if (minx < gs.clip_x0) minx = gs.clip_x0;
-    if (miny < gs.clip_y0) miny = gs.clip_y0;
-    if (maxx > gs.clip_x1) maxx = gs.clip_x1;
-    if (maxy > gs.clip_y1) maxy = gs.clip_y1;
-    if (minx > maxx || miny > maxy)
-        return;
+    /* to target units */
+    v0.x <<= s; v0.y <<= s; v0.u <<= s; v0.v <<= s;
+    v1.x <<= s; v1.y <<= s; v1.u <<= s; v1.v <<= s;
+    v2.x <<= s; v2.y <<= s; v2.u <<= s; v2.v <<= s;
 
-    bias0 = is_top_left(&v1, &v2) ? 0 : -1;
-    bias1 = is_top_left(&v2, &v0) ? 0 : -1;
-    bias2 = is_top_left(&v0, &v1) ? 0 : -1;
+    area = (s64)(v1.x - v0.x) * (v2.y - v0.y) - (s64)(v1.y - v0.y) * (v2.x - v0.x);
+    if (area == 0)
+        return;
+    if (area < 0) {
+        tmp = v1; v1 = v2; v2 = tmp;
+        area = -area;
+    }
+    v[0] = &v0; v[1] = &v1; v[2] = &v2;
+
+    /* edge functions; the top-left rule decides who owns pixels on an edge */
+    for (i = 0; i < 3; i++) {
+        const Vtx *a = v[(i + 1) % 3], *b = v[(i + 2) % 3];
+        s32 dx = b->x - a->x, dy = b->y - a->y;
+        int top_left = (dy < 0) || (dy == 0 && dx > 0);
+        e[i].a = -(s64)dy;
+        e[i].b = dx;
+        e[i].c = (s64)dy * a->x - (s64)dx * a->y - (top_left ? 0 : 1);
+    }
+
+    miny = v0.y < v1.y ? v0.y : v1.y; if (v2.y < miny) miny = v2.y;
+    maxy = v0.y > v1.y ? v0.y : v1.y; if (v2.y > maxy) maxy = v2.y;
+    if (miny < (gs.clip_y0 << s)) miny = gs.clip_y0 << s;
+    if (maxy > ((gs.clip_y1 + 1) << s) - 1) maxy = ((gs.clip_y1 + 1) << s) - 1;
+    cx0 = gs.clip_x0 << s;
+    cx1 = ((gs.clip_x1 + 1) << s) - 1;
 
     dither = gs.dither && ((flags & F_GOURAUD) || ((flags & F_TEXTURED) && !(flags & F_RAW)));
+    if (flags & F_GOURAUD) {
+        pr = plane(&v0, &v1, &v2, v0.r, v1.r, v2.r, area);
+        pg = plane(&v0, &v1, &v2, v0.g, v1.g, v2.g, area);
+        pb = plane(&v0, &v1, &v2, v0.b, v1.b, v2.b, area);
+    }
+    if (flags & F_TEXTURED) {
+        pu = plane(&v0, &v1, &v2, v0.u, v1.u, v2.u, area);
+        pv = plane(&v0, &v1, &v2, v0.v, v1.v, v2.v, area);
+    }
 
     for (y = miny; y <= maxy; y++) {
-        for (x = minx; x <= maxx; x++) {
-            int64_t w0 = edge(&v1, &v2, x, y);
-            int64_t w1 = edge(&v2, &v0, x, y);
-            int64_t w2 = edge(&v0, &v1, x, y);
-            s32 r, g, b;
+        /* span of x where all three edge functions are >= 0 */
+        s64 xl = cx0, xr = cx1;
+        s64 r = 0, g = 0, b = 0, u = 0, vv = 0;
+        s32 x;
+        for (i = 0; i < 3 && xl <= xr; i++) {
+            s64 c = e[i].b * y + e[i].c;
+            if (e[i].a > 0) {
+                s64 lo = -floor_div(c, e[i].a);   /* ceil(-c / a) */
+                if (lo > xl) xl = lo;
+            } else if (e[i].a < 0) {
+                s64 hi = floor_div(c, -e[i].a);
+                if (hi < xr) xr = hi;
+            } else if (c < 0) {
+                xl = xr + 1;
+            }
+        }
+        if (xl > xr)
+            continue;
+
+        if (flags & F_GOURAUD) {
+            r = pr.base + pr.dx * xl + pr.dy * y;
+            g = pg.base + pg.dx * xl + pg.dy * y;
+            b = pb.base + pb.dx * xl + pb.dy * y;
+        }
+        if (flags & F_TEXTURED) {
+            u = pu.base + pu.dx * xl + pu.dy * y;
+            vv = pv.base + pv.dx * xl + pv.dy * y;
+        }
+
+        for (x = (s32)xl; x <= (s32)xr; x++) {
+            s32 cr, cg, cb;
             u16 c;
             int semi;
 
-            if (w0 + bias0 < 0 || w1 + bias1 < 0 || w2 + bias2 < 0)
-                continue;
-
             if (flags & F_GOURAUD) {
-                r = (s32)((w0 * v0.r + w1 * v1.r + w2 * v2.r) / area);
-                g = (s32)((w0 * v0.g + w1 * v1.g + w2 * v2.g) / area);
-                b = (s32)((w0 * v0.b + w1 * v1.b + w2 * v2.b) / area);
+                cr = (s32)(r >> 16); cg = (s32)(g >> 16); cb = (s32)(b >> 16);
+                r += pr.dx; g += pg.dx; b += pb.dx;
             } else {
-                r = v0.r; g = v0.g; b = v0.b;
+                cr = v0.r; cg = v0.g; cb = v0.b;
             }
 
             if (flags & F_TEXTURED) {
-                s32 u = (s32)((w0 * v0.u + w1 * v1.u + w2 * v2.u) / area);
-                s32 v = (s32)((w0 * v0.v + w1 * v1.v + w2 * v2.v) / area);
-                u16 tx = texel(tex, u, v);
+                u16 tx = texel(t, tex, (int)(u >> 16), (int)(vv >> 16));
+                u += pu.dx;
+                vv += pv.dx;
                 if (tx == 0)
                     continue;
-                c = (flags & F_RAW) ? tx : modulate(tx, r, g, b, x, y, dither);
+                c = (flags & F_RAW) ? tx : modulate(tx, cr, cg, cb, x >> s, y >> s, dither);
                 semi = (flags & F_SEMI) && (tx & 0x8000);
             } else {
-                c = rgb15(r, g, b, x, y, dither);
+                c = rgb15(cr, cg, cb, x >> s, y >> s, dither);
                 semi = (flags & F_SEMI) != 0;
             }
-            plot(x, y, c, semi);
+            plot(t, x, y, c, semi);
         }
     }
 }
 
 /* ---- lines ------------------------------------------------------------------------ */
 
-static void draw_line(Vtx a, Vtx b, int flags)
+static void draw_line(const Target *t, Vtx a, Vtx b, int flags)
 {
-    s32 dx, dy, steps, i;
+    s32 dx, dy, steps, i, s = t->shift;
     int dither = gs.dither && (flags & F_GOURAUD);
 
     a.x += gs.off_x; a.y += gs.off_y;
@@ -266,7 +374,8 @@ static void draw_line(Vtx a, Vtx b, int flags)
     steps = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
 
     for (i = 0; i <= steps; i++) {
-        s32 x, y, r, g, bl;
+        s32 x, y, r, g, bl, j, k;
+        u16 c;
         if (steps == 0) {
             x = a.x; y = a.y; r = a.r; g = a.g; bl = a.b;
         } else {
@@ -282,64 +391,86 @@ static void draw_line(Vtx a, Vtx b, int flags)
         }
         if (x < gs.clip_x0 || x > gs.clip_x1 || y < gs.clip_y0 || y > gs.clip_y1)
             continue;
-        plot(x, y, rgb15(r, g, bl, x, y, dither), (flags & F_SEMI) != 0);
+        c = rgb15(r, g, bl, x, y, dither);
+        /* one GPU pixel = a scale x scale block */
+        for (j = 0; j < (1 << s); j++)
+            for (k = 0; k < (1 << s); k++)
+                plot(t, (x << s) + k, (y << s) + j, c, (flags & F_SEMI) != 0);
     }
 }
 
 /* ---- rectangles ------------------------------------------------------------------- */
 
-static void draw_rect(s32 x0, s32 y0, s32 w, s32 h, s32 r, s32 g, s32 b,
+static void draw_rect(const Target *t, s32 x0, s32 y0, s32 w, s32 h, s32 r, s32 g, s32 b,
                       int flags, const TexState *tex, int u0, int v0)
 {
-    s32 x, y;
-    x0 += gs.off_x;
-    y0 += gs.off_y;
+    s32 x, y, s = t->shift;
+    s32 cx0 = gs.clip_x0 << s, cx1 = ((gs.clip_x1 + 1) << s) - 1;
+    s32 cy0 = gs.clip_y0 << s, cy1 = ((gs.clip_y1 + 1) << s) - 1;
+
+    x0 = (x0 + gs.off_x) << s;
+    y0 = (y0 + gs.off_y) << s;
+    w <<= s;
+    h <<= s;
     for (y = 0; y < h; y++) {
         s32 py = y0 + y;
-        if (py < gs.clip_y0 || py > gs.clip_y1)
+        if (py < cy0 || py > cy1)
             continue;
         for (x = 0; x < w; x++) {
             s32 px = x0 + x;
             u16 c;
             int semi;
-            if (px < gs.clip_x0 || px > gs.clip_x1)
+            if (px < cx0 || px > cx1)
                 continue;
             if (flags & F_TEXTURED) {
-                u16 tx = texel(tex, u0 + x, v0 + y);
+                u16 tx = texel(t, tex, (u0 << s) + x, (v0 << s) + y);
                 if (tx == 0)
                     continue;
-                c = (flags & F_RAW) ? tx : modulate(tx, r, g, b, px, py, 0);
+                c = (flags & F_RAW) ? tx : modulate(tx, r, g, b, px >> s, py >> s, 0);
                 semi = (flags & F_SEMI) && (tx & 0x8000);
             } else {
-                c = rgb15(r, g, b, px, py, 0);
+                c = rgb15(r, g, b, px >> s, py >> s, 0);
                 semi = (flags & F_SEMI) != 0;
             }
-            plot(px, py, c, semi);
+            plot(t, px, py, c, semi);
         }
     }
 }
 
-/* ---- VRAM transfers --------------------------------------------------------------- */
+/* ---- VRAM transfers (original VRAM + upscaled copy) ------------------------------------ */
+
+static void fill_target(const Target *t, int x, int y, int w, int h, u16 c)
+{
+    int i, j, s = t->shift;
+    for (j = 0; j < (h << s); j++)
+        for (i = 0; i < (w << s); i++)
+            TPIX(t, (x << s) + i, (y << s) + j) = c;
+}
 
 void psx_gpu_fill(int x, int y, int w, int h, u32 rgb)
 {
     u16 c = rgb15(rgb & 0xFF, (rgb >> 8) & 0xFF, (rgb >> 16) & 0xFF, 0, 0, 0);
-    int i, j;
-    for (j = 0; j < h; j++)
-        for (i = 0; i < w; i++)
-            PIX(x + i, y + j) = c;
+    fill_target(&native, x, y, w, h, c);
+    if (hires.pix)
+        fill_target(&hires, x, y, w, h, c);
 }
 
 void psx_gpu_load(int x, int y, int w, int h, const u16 *src)
 {
-    int i, j;
+    int i, j, k, l, s = hires.shift;
     for (j = 0; j < h; j++)
         for (i = 0; i < w; i++) {
             u16 c = *src++;
             u16 *p = &PIX(x + i, y + j);
             if (gs.check_mask && (*p & 0x8000))
                 continue;
-            *p = gs.set_mask ? (u16)(c | 0x8000) : c;
+            if (gs.set_mask)
+                c |= 0x8000;
+            *p = c;
+            if (hires.pix)
+                for (k = 0; k < (1 << s); k++)
+                    for (l = 0; l < (1 << s); l++)
+                        TPIX(&hires, ((x + i) << s) + l, ((y + j) << s) + k) = c;
         }
 }
 
@@ -351,14 +482,32 @@ void psx_gpu_store(int x, int y, int w, int h, u16 *dst)
             *dst++ = PIX(x + i, y + j);
 }
 
-void psx_gpu_move(int sx, int sy, int dx, int dy, int w, int h)
+static void move_target(const Target *t, int sx, int sy, int dx, int dy, int w, int h)
 {
-    u16 *tmp = (u16 *)malloc((size_t)w * h * sizeof(u16));
+    int s = t->shift, i, j;
+    size_t n = (size_t)(w << s) * (size_t)(h << s);
+    u16 *tmp = (u16 *)malloc(n * sizeof(u16));
     if (!tmp)
         return;
-    psx_gpu_store(sx, sy, w, h, tmp);
-    psx_gpu_load(dx, dy, w, h, tmp);
+    for (j = 0; j < (h << s); j++)
+        for (i = 0; i < (w << s); i++)
+            tmp[j * (w << s) + i] = TPIX(t, (sx << s) + i, (sy << s) + j);
+    for (j = 0; j < (h << s); j++)
+        for (i = 0; i < (w << s); i++) {
+            u16 *p = &TPIX(t, (dx << s) + i, (dy << s) + j);
+            u16 c = tmp[j * (w << s) + i];
+            if (gs.check_mask && (*p & 0x8000))
+                continue;
+            *p = gs.set_mask ? (u16)(c | 0x8000) : c;
+        }
     free(tmp);
+}
+
+void psx_gpu_move(int sx, int sy, int dx, int dy, int w, int h)
+{
+    move_target(&native, sx, sy, dx, dy, w, h);
+    if (hires.pix)
+        move_target(&hires, sx, sy, dx, dy, w, h);
 }
 
 /* ---- GP0 command decoding ---------------------------------------------------------- */
@@ -459,9 +608,14 @@ static void exec_poly(const u32 *p)
         for (i = 0; i < n; i++)
             v[i].r = v[i].g = v[i].b = 128;
 
-    draw_triangle(v[0], v[1], v[2], flags, &ts);
+    draw_triangle(&native, v[0], v[1], v[2], flags, &ts);
     if (quad)
-        draw_triangle(v[1], v[2], v[3], flags, &ts);
+        draw_triangle(&native, v[1], v[2], v[3], flags, &ts);
+    if (hires.pix) {
+        draw_triangle(&hires, v[0], v[1], v[2], flags, &ts);
+        if (quad)
+            draw_triangle(&hires, v[1], v[2], v[3], flags, &ts);
+    }
 }
 
 static void exec_line(const u32 *p, int words)
@@ -484,7 +638,9 @@ static void exec_line(const u32 *p, int words)
         if (k >= words)
             break;
         vertex(p[k++], &b);
-        draw_line(a, b, flags);
+        draw_line(&native, a, b, flags);
+        if (hires.pix)
+            draw_line(&hires, a, b, flags);
         a = b;
         if (!(cmd & 0x08))
             break;
@@ -519,7 +675,9 @@ static void exec_rect(const u32 *p)
     }
     if (flags & F_RAW)
         v.r = v.g = v.b = 128;
-    draw_rect(v.x, v.y, w, h, v.r, v.g, v.b, flags, &ts, u0, v0);
+    draw_rect(&native, v.x, v.y, w, h, v.r, v.g, v.b, flags, &ts, u0, v0);
+    if (hires.pix)
+        draw_rect(&hires, v.x, v.y, w, h, v.r, v.g, v.b, flags, &ts, u0, v0);
 }
 
 static void exec_command(const u32 *p, int words)

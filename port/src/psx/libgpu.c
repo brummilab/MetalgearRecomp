@@ -13,6 +13,7 @@ void psx_gpu_fill(int x, int y, int w, int h, uint32_t rgb);
 void psx_gpu_load(int x, int y, int w, int h, const uint16_t *src);
 void psx_gpu_store(int x, int y, int w, int h, uint16_t *dst);
 void psx_gpu_move(int sx, int sy, int dx, int dy, int w, int h);
+const uint16_t *psx_gpu_display(int *stride, int *shift);
 
 static DISPENV disp_env;
 static int     disp_enabled;
@@ -40,7 +41,14 @@ void psx_gpu_init(void)
 
 void psx_gpu_vblank(void)
 {
-    plat_present(psx_vram, disp_env.disp.x, disp_env.disp.y, disp_env.disp.w,
+    int stride, shift;
+    const uint16_t *vram = psx_gpu_display(&stride, &shift);
+    if (disp_env.isrgb24) {
+        vram = psx_vram;
+        stride = 1024;
+        shift = 0;
+    }
+    plat_present(vram, stride, shift, disp_env.disp.x, disp_env.disp.y, disp_env.disp.w,
                  disp_env.disp.h, disp_env.isrgb24, disp_enabled);
 }
 
