@@ -20,6 +20,8 @@ void         psx_gpu_reset(void);
 int          psx_gpu_set_scale(int scale);
 const uint16_t *psx_gpu_display(int *stride, int *shift);
 extern int   psx_gte_widescreen;
+void         psx_ws_init(int widescreen, int fit_hud);
+long RotTransPers3(SVECTOR *v0, SVECTOR *v1, SVECTOR *v2, long *sxy0, long *sxy1, long *sxy2, long *p, long *flag);
 extern uint16_t psx_vram[];
 
 long RotTransPers(SVECTOR *v0, long *sxy, long *p, long *flag);
@@ -37,7 +39,7 @@ void DrawOTag(u_long *p);
 uint16_t plat_pad_buttons(int port) { (void)port; return 0; }
 uint64_t plat_ticks_us(void) { return 0; }
 void plat_sleep_us(uint64_t us) { (void)us; }
-void plat_present(const uint16_t *v, int st, int sh, int x, int y, int w, int h, int r, int e) { (void)v; (void)st; (void)sh; (void)x; (void)y; (void)w; (void)h; (void)r; (void)e; }
+void plat_present(const uint16_t *v, int st, int sh, int x, int y, int w, int h, int r, int e, int pb) { (void)v; (void)st; (void)sh; (void)x; (void)y; (void)w; (void)h; (void)r; (void)e; (void)pb; }
 int  plat_pump_events(void) { return 1; }
 /* audio output: peak level of everything mixed since the last reset */
 static int audio_peak;
@@ -390,6 +392,62 @@ static void test_reverb(void)
     CHECK(wet > 50, "reverb tail missing (peak %d)", wet);
 }
 
+/* ---- widescreen HUD ------------------------------------------------------------------- */
+
+static void test_widescreen_hud(void)
+{
+    static u_long ot[4];
+    static uint32_t tri[1 + 4], hud_poly[1 + 5], hud_tile[1 + 3];
+    uint32_t env[] = {
+        0xE3000000u, 0xE4000000u | 319 | (239 << 10), 0xE5000000u,
+        0x02000000u, 0, 320 | (240 << 16),          /* clear to black */
+    };
+    SVECTOR a = { -50, -50, 0, 0 }, b = { 50, -50, 0, 0 }, c = { -50, 50, 0, 0 }, rot = { 0, 0, 0, 0 };
+    MATRIX m;
+    long s0, s1, s2, p, flag;
+
+    psx_ws_init(1, 1);
+    RotMatrix(&rot, &m);
+    m.t[0] = 0; m.t[1] = 0; m.t[2] = 1000;
+    SetRotMatrix(&m);
+    SetTransMatrix(&m);
+    psx_gte_write_ctrl(24, 160 << 16);
+    psx_gte_write_ctrl(25, 120 << 16);
+    psx_gte_write_ctrl(26, 1000);
+    RotTransPers3(&a, &b, &c, &s0, &s1, &s2, &p, &flag);
+    CHECK((short)s1 >= 196 && (short)s1 <= 198, "3D vertex squeezed by the GTE: x = %d (want ~197)", (short)s1);
+
+    psx_gpu_reset();
+    psx_gpu_exec(env, 6);
+    /* green 3D triangle from the projected coordinates */
+    tri[0] = 4u << 24; tri[1] = 0x2000FF00u;
+    tri[2] = (uint32_t)s0; tri[3] = (uint32_t)s1; tri[4] = (uint32_t)s2;
+    /* blue HUD quad at fixed coordinates x 0..40, y 200..220 */
+    hud_poly[0] = 5u << 24; hud_poly[1] = 0x28FF0000u;
+    hud_poly[2] = 0 | (200 << 16); hud_poly[3] = 40 | (200 << 16);
+    hud_poly[4] = 0 | (220 << 16); hud_poly[5] = 40 | (220 << 16);
+    /* red HUD tile at x 280..320, y 0..20 */
+    hud_tile[0] = 3u << 24; hud_tile[1] = 0x600000FFu;
+    hud_tile[2] = 280 | (0 << 16); hud_tile[3] = 40 | (20 << 16);
+    ClearOTagR(ot, 4);
+    tri[0] |= ot[1] & 0xFFFFFF;      ot[1] = (u_long)((uintptr_t)tri & 0xFFFFFF);
+    hud_poly[0] |= ot[2] & 0xFFFFFF; ot[2] = (u_long)((uintptr_t)hud_poly & 0xFFFFFF);
+    hud_tile[0] |= ot[3] & 0xFFFFFF; ot[3] = (u_long)((uintptr_t)hud_tile & 0xFFFFFF);
+    DrawOTag(&ot[3]);
+
+    /* 3D: drawn where the GTE put it, not squeezed a second time */
+    CHECK(px(130, 80) == (31 << 5), "3D triangle inside = %04x", px(130, 80));
+    CHECK(px(190, 75) == (31 << 5), "3D triangle near its right corner = %04x (squeezed twice?)", px(190, 75));
+    /* HUD quad 0..40 -> 40..70 around the centre 160 */
+    CHECK(px(10, 210) == 0, "HUD quad not squeezed (pixel at x=10 is %04x)", px(10, 210));
+    CHECK(px(50, 210) == (31 << 10), "HUD quad missing at x=50 (%04x)", px(50, 210));
+    CHECK(px(75, 210) == 0, "HUD quad too wide (pixel at x=75 is %04x)", px(75, 210));
+    /* HUD tile 280..320 -> 250..280 */
+    CHECK(px(255, 10) == 31 && px(290, 10) == 0, "HUD tile squeeze (%04x at 255, %04x at 290)", px(255, 10), px(290, 10));
+
+    psx_ws_init(0, 0);
+}
+
 /* ---- upscaled rendering ---------------------------------------------------------------- */
 
 static void test_hires(int scale)
@@ -455,12 +513,24 @@ int main(int argc, char **argv)
     test_gpu();
     test_movie();
     test_reverb();
+    test_widescreen_hud();
     if (argc > 1)
         write_ppm(argv[1]);
     test_hires(2);
     test_hires(4);
     if (argc > 2)
         write_hires_ppm(argv[2]);
+    /* widescreen HUD at 2x: squeezed in the upscaled raster as well */
+    psx_gpu_set_scale(2);
+    test_widescreen_hud();
+    {
+        int stride, shift;
+        const uint16_t *hv = psx_gpu_display(&stride, &shift);
+        CHECK(hv[(421) * stride + 101] == (31 << 10) && hv[421 * stride + 21] == 0,
+              "2x widescreen HUD quad (%04x at x=101, %04x at x=21)", hv[421 * stride + 101], hv[421 * stride + 21]);
+    }
+    if (argc > 3)
+        write_hires_ppm(argv[3]);
     psx_gpu_set_scale(1);
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "all tests passed", failures, failures == 1 ? "" : "s");
     return failures != 0;

@@ -44,10 +44,28 @@ meist mit 30 fps (33 ms Budget). Faktor 4 braucht deshalb eine schnelle CPU.
 
 **Breitbild** (`--widescreen`): Der GTE-Breitbild-Hack staucht die
 3D-Projektion horizontal auf 3/4, und das Bild wird auf 16:9 gestreckt. Die
-3D-Welt erscheint unverzerrt mit etwa 33 % mehr Sichtfeld. Bekannte
-Nebenwirkungen, wie bei allen Breitbild-Hacks für PS1-Spiele:
-- 2D-Elemente (HUD, Menüs, Texte, Funk-Bildschirm) und Filme werden in die
-  Breite gezogen.
+3D-Welt erscheint unverzerrt mit etwa 33 % mehr Sichtfeld.
+
+**HUD unverzerrt** (Standard im Breitbild, abschaltbar mit `--stretch-hud`):
+2D-Elemente wie HUD, Menüs, Texte und Funk-Bildschirm werden nicht über den GTE
+projiziert und kämen gestreckt heraus. Der Grafikchip staucht sie deshalb
+ebenfalls um die Bildmitte auf 3/4, und zwar im Zielraster, damit
+hochaufgelöste Schrift sauber bleibt. Die Unterscheidung kommt aus einem Cache
+aller Bildschirmpositionen, die der GTE erzeugt (die Idee hinter PGXP,
+`src/psx/ws.c`):
+- Polygone und Linien mit mindestens 2 Ecken aus dem Cache sind 3D und bleiben unverändert.
+- Alle anderen Polygone und Linien sowie alle Sprites/Rechtecke gelten als 2D.
+
+Filme werden im Breitbild mit schwarzen Rändern in 4:3 gezeigt; ihre
+Untertitel bleiben dann ungestaucht.
+
+Bekannte Grenzen:
+- Das HUD liegt im mittleren 4:3-Bereich, nicht an den Rändern des 16:9-Bilds.
+- 2D-Elemente, die an 3D-Positionen hängen (z. B. Markierungen über Gegnern),
+  rutschen etwas zur Mitte.
+- Sprites, die das Spiel als 3D-Effekt nutzt, würden wie HUD gestaucht. MGS
+  zeichnet 3D-Effekte nach bisherigem Stand als Polygone; das ist mit echten
+  Szenen noch zu prüfen.
 - Objekte am Bildrand können später auftauchen, weil das Spiel nach seinem
   4:3-Sichtfeld aussortiert.
 
@@ -109,7 +127,8 @@ build\windows\mgs.exe --iso "MGS Integral Disc 1.bin"
 | `--fullscreen` | Vollbild (F11 schaltet um) |
 | `--japanese` | Spracheinstellung des Spiels unverändert lassen (Standard: Englisch erzwungen) |
 | `--render-scale N` | interne Auflösung: 1 = Original 320×240, 2 = 640×480 (Standard), 4 = 1280×960 |
-| `--widescreen` | 16:9 mit breiterem 3D-Sichtfeld |
+| `--widescreen` | 16:9 mit breiterem 3D-Sichtfeld; HUD/Menüs bleiben unverzerrt, Filme in 4:3 |
+| `--stretch-hud` | im Breitbild HUD/Menüs strecken statt unverzerrt lassen |
 
 **Tastatur:** Pfeiltasten = Steuerkreuz, X = ✕, C = ○, Z = □, V = △,
 A/S = L1/R1, Q/W = L2/R2, Enter = Start, Backspace = Select, Esc = Beenden.

@@ -78,6 +78,31 @@ static void set_texwindow(u32 v)
     gs.tw_off_y = ((v >> 15) & 0x1F) * 8;
 }
 
+/* ---- widescreen: 2D elements are squeezed to 3/4 around the area centre ---- */
+
+static int ws_squeeze;          /* set per primitive by the exec functions */
+
+/* x in target units (already offset and scaled) */
+static inline s32 squeeze(const Target *t, s32 x)
+{
+    s32 cx = ((gs.clip_x0 + gs.clip_x1 + 1) << t->shift) / 2;
+    return cx + (((x - cx) * 3) >> 2);
+}
+
+/* 3D if at least two vertices were projected by the GTE (see ws.c) */
+static int is_2d(const u32 *verts[], int n)
+{
+    int i, hits = 0;
+    if (!psx_ws_hud || psx_ws_movie_active())
+        return 0;
+    for (i = 0; i < n; i++) {
+        u32 w = *verts[i];
+        if (psx_ws_is_projected((s32)(w << 21) >> 21, (s32)((w >> 16) << 21) >> 21))
+            hits++;
+    }
+    return hits < (n < 2 ? n : 2);
+}
+
 /* ---- render scale ---------------------------------------------------------------- */
 
 int psx_gpu_set_scale(int scale)
@@ -261,6 +286,11 @@ static void draw_triangle(const Target *t, Vtx v0, Vtx v1, Vtx v2, int flags, co
     v0.x <<= s; v0.y <<= s; v0.u <<= s; v0.v <<= s;
     v1.x <<= s; v1.y <<= s; v1.u <<= s; v1.v <<= s;
     v2.x <<= s; v2.y <<= s; v2.u <<= s; v2.v <<= s;
+    if (ws_squeeze) {
+        v0.x = squeeze(t, v0.x);
+        v1.x = squeeze(t, v1.x);
+        v2.x = squeeze(t, v2.x);
+    }
 
     area = (s64)(v1.x - v0.x) * (v2.y - v0.y) - (s64)(v1.y - v0.y) * (v2.x - v0.x);
     if (area == 0)
@@ -367,6 +397,10 @@ static void draw_line(const Target *t, Vtx a, Vtx b, int flags)
 
     a.x += gs.off_x; a.y += gs.off_y;
     b.x += gs.off_x; b.y += gs.off_y;
+    if (ws_squeeze) {
+        a.x = squeeze(&native, a.x);
+        b.x = squeeze(&native, b.x);
+    }
     dx = b.x - a.x;
     dy = b.y - a.y;
     if (abs(dx) >= 1024 || abs(dy) >= 512)
@@ -412,6 +446,11 @@ static void draw_rect(const Target *t, s32 x0, s32 y0, s32 w, s32 h, s32 r, s32 
     y0 = (y0 + gs.off_y) << s;
     w <<= s;
     h <<= s;
+    if (ws_squeeze) {
+        s32 x1 = squeeze(t, x0 + w);
+        x0 = squeeze(t, x0);
+        w = x1 - x0;
+    }
     for (y = 0; y < h; y++) {
         s32 py = y0 + y;
         if (py < cy0 || py > cy1)
@@ -423,7 +462,9 @@ static void draw_rect(const Target *t, s32 x0, s32 y0, s32 w, s32 h, s32 r, s32 
             if (px < cx0 || px > cx1)
                 continue;
             if (flags & F_TEXTURED) {
-                u16 tx = texel(t, tex, (u0 << s) + x, (v0 << s) + y);
+                /* a squeezed sprite still shows its whole texture */
+                s32 ux = ws_squeeze ? (x * 4) / 3 : x;
+                u16 tx = texel(t, tex, (u0 << s) + ux, (v0 << s) + y);
                 if (tx == 0)
                     continue;
                 c = (flags & F_RAW) ? tx : modulate(tx, r, g, b, px >> s, py >> s, 0);
@@ -608,6 +649,13 @@ static void exec_poly(const u32 *p)
         for (i = 0; i < n; i++)
             v[i].r = v[i].g = v[i].b = 128;
 
+    {
+        const u32 *vw[4];
+        int step = 1 + tex, base = 1;
+        for (i = 0; i < n; i++)
+            vw[i] = &p[gour ? base + i * (step + 1) : base + i * step];
+        ws_squeeze = is_2d(vw, n);
+    }
     draw_triangle(&native, v[0], v[1], v[2], flags, &ts);
     if (quad)
         draw_triangle(&native, v[1], v[2], v[3], flags, &ts);
@@ -624,12 +672,14 @@ static void exec_line(const u32 *p, int words)
     int gour = (cmd & 0x10) != 0;
     int flags = (gour ? F_GOURAUD : 0) | ((cmd & 2) ? F_SEMI : 0);
     Vtx a, b;
-    int k = 0;
+    int k = 0, prev;
 
     memset(&a, 0, sizeof(a));
     color(p[k++], &a);
+    prev = k;                       /* index of the current start vertex word */
     vertex(p[k++], &a);
     while (k < words) {
+        const u32 *vw[2];
         if ((p[k] & 0xF000F000u) == 0x50005000u && (cmd & 0x08))
             break;
         b = a;
@@ -637,7 +687,11 @@ static void exec_line(const u32 *p, int words)
             color(p[k++], &b);
         if (k >= words)
             break;
+        vw[0] = &p[prev];
+        vw[1] = &p[k];
+        prev = k;
         vertex(p[k++], &b);
+        ws_squeeze = is_2d(vw, 2);
         draw_line(&native, a, b, flags);
         if (hires.pix)
             draw_line(&hires, a, b, flags);
@@ -675,6 +729,8 @@ static void exec_rect(const u32 *p)
     }
     if (flags & F_RAW)
         v.r = v.g = v.b = 128;
+    /* sprites and tiles are HUD, text and menu elements */
+    ws_squeeze = psx_ws_hud && !psx_ws_movie_active();
     draw_rect(&native, v.x, v.y, w, h, v.r, v.g, v.b, flags, &ts, u0, v0);
     if (hires.pix)
         draw_rect(&hires, v.x, v.y, w, h, v.r, v.g, v.b, flags, &ts, u0, v0);

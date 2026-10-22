@@ -418,6 +418,7 @@ void DecDCTin(u_long *buf, int mode)
         if (!warned++)
             psx_log("MDEC: 24-bit output not implemented, using 15 bit\n");
     }
+    psx_ws_movie_frame();
     mb_count = mb_out = 0;
     while (n < avail && mb_count < MAX_MACROBLOCKS) {
         int b;

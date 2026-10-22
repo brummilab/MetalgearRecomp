@@ -14,8 +14,6 @@ typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t  u8;
 
-int psx_gte_widescreen;
-
 static u32 D[32]; /* data registers */
 static u32 C[32]; /* control registers */
 
@@ -382,6 +380,8 @@ static void rtp(int n, int sf, int lm, int last)
     SXY0 = SXY1;
     SXY1 = SXY2;
     SXY2 = (u16)lim_sxy(1, (s32)(x >> 16)) | ((u32)(u16)lim_sxy(2, (s32)(y >> 16)) << 16);
+    if (psx_ws_hud)
+        psx_ws_mark((s16)SXY2, (s16)(SXY2 >> 16));
 
     if (last) {
         s64 d = mac0_set(div * DQA + DQB);

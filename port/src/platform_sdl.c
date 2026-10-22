@@ -14,6 +14,7 @@ static SDL_AudioDeviceID audio;
 static SDL_GameController *pad;
 static uint32_t     *frame;          /* (640 << shift) x (512 << shift) */
 static int           frame_shift;    /* log2 of the render scale */
+static int           wide;           /* 16:9 output */
 static uint16_t      buttons;
 
 extern uint8_t psx_pad_axes[2][4];
@@ -68,6 +69,7 @@ int plat_init(int scale, int fullscreen, int render_scale, int widescreen)
         return -1;
     }
     /* 4:3, or 16:9 with the horizontally squeezed widescreen projection */
+    wide = widescreen;
     SDL_RenderSetLogicalSize(renderer, widescreen ? 1920 : 1440, 1080);
     frame_shift = render_scale >= 4 ? 2 : render_scale >= 2 ? 1 : 0;
     frame = (uint32_t *)calloc((size_t)(640 << frame_shift) * (512 << frame_shift), 4);
@@ -181,10 +183,12 @@ static uint32_t rgb555_to_argb(uint16_t c)
 /*
  * vram/stride/shift describe the GPU's display VRAM (possibly upscaled by
  * 1 << shift); x, y, w, h are the display area in original GPU pixels.
+ * pillarbox shows a 4:3 picture centred in the 16:9 window (movies).
  */
 void plat_present(const uint16_t *vram, int stride, int shift, int x, int y, int w, int h,
-                  int rgb24, int enabled)
+                  int rgb24, int enabled, int pillarbox)
 {
+    SDL_Rect dst = { 0, 0, wide ? 1920 : 1440, 1080 };
     int i, j, fw = 640 << frame_shift, sw, sh, wmask = (1024 << shift) - 1, hmask = (512 << shift) - 1;
     SDL_Rect src;
 
@@ -220,8 +224,14 @@ void plat_present(const uint16_t *vram, int stride, int shift, int x, int y, int
     src.y = 0;
     src.w = sw;
     src.h = sh;
+    /* movies keep 4:3 in widescreen mode: black bars left and right */
+    if (pillarbox && wide) {
+        dst.x = 240;
+        dst.w = 1440;
+    }
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, &src, NULL);
+    SDL_RenderCopy(renderer, texture, &src, &dst);
     SDL_RenderPresent(renderer);
 }
 

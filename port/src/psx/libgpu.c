@@ -49,7 +49,8 @@ void psx_gpu_vblank(void)
         shift = 0;
     }
     plat_present(vram, stride, shift, disp_env.disp.x, disp_env.disp.y, disp_env.disp.w,
-                 disp_env.disp.h, disp_env.isrgb24, disp_enabled);
+                 disp_env.disp.h, disp_env.isrgb24, disp_enabled,
+                 psx_gte_widescreen && psx_ws_movie_active());
 }
 
 void psx_draw_sync_interrupt(void)
@@ -203,6 +204,7 @@ u_long *ClearOTag(u_long *ot, int n)
 
 void DrawOTag(u_long *p)
 {
+    psx_ws_new_frame();
     unsigned guard = 0;
     while (p) {
         u_long tag = *p;
