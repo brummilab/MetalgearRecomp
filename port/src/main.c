@@ -23,6 +23,7 @@ static void usage(const char *argv0)
            "  --render-scale N internal resolution: 1 (original 320x240), 2 or 4 (default 2)\n"
            "  --widescreen     16:9 picture with a wider 3D field of view\n"
            "  --stretch-hud    widescreen: stretch HUD/menus instead of keeping 4:3 proportions\n"
+           "  --60fps          experimental: interpolated in-between frames (60 instead of 30)\n"
            "\n"
            "Keys: arrows = d-pad, X = cross, C = circle, Z = square, V = triangle,\n"
            "      A/S = L1/R1, Q/W = L2/R2, Enter = start, Backspace = select, Esc = quit\n",
@@ -32,7 +33,7 @@ static void usage(const char *argv0)
 int main(int argc, char **argv)
 {
     const char *iso = NULL, *save_dir = NULL;
-    int scale = 3, fullscreen = 0, render_scale = 2, widescreen = 0, fit_hud = 1, i;
+    int scale = 3, fullscreen = 0, render_scale = 2, widescreen = 0, fit_hud = 1, fps60 = 0, i;
 
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--iso") && i + 1 < argc)
@@ -51,6 +52,8 @@ int main(int argc, char **argv)
             widescreen = 1;
         else if (!strcmp(argv[i], "--stretch-hud"))
             fit_hud = 0;
+        else if (!strcmp(argv[i], "--60fps"))
+            fps60 = 1;
         else {
             usage(argv[0]);
             return strcmp(argv[i], "--help") ? 1 : 0;
@@ -69,8 +72,11 @@ int main(int argc, char **argv)
     psx_gpu_init();
     render_scale = psx_gpu_set_scale(render_scale);
     psx_ws_init(widescreen, fit_hud);
+    psx_interp_init(fps60);
     psx_log("video: %dx%d internal%s\n", 320 * render_scale, 240 * render_scale,
             widescreen ? (psx_ws_hud ? ", widescreen 16:9, HUD 4:3" : ", widescreen 16:9") : "");
+    if (fps60)
+        psx_log("video: 60 fps interpolation (experimental)\n");
     psx_spu_init();
     psx_cd_init(iso);
     psx_card_init(save_dir);

@@ -136,7 +136,13 @@ void InitGeom(void)
     psx_gte_write_ctrl(30, 0x100);   /* ZSF4 */
 }
 
-void SetRotMatrix(MATRIX *m) { load_matrix(0, m); }
+void psx_gte_note_rt(unsigned int addr);
+
+void SetRotMatrix(MATRIX *m)
+{
+    load_matrix(0, m);
+    psx_gte_note_rt((unsigned int)(uintptr_t)m);
+}
 
 void SetTransMatrix(MATRIX *m)
 {

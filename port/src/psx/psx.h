@@ -99,6 +99,7 @@ int  psx_gpu_set_scale(int scale);   /* 1, 2 or 4; returns the scale in use */
 extern int psx_gte_widescreen;      /* squeeze 3D projection for 16:9 */
 extern int psx_ws_hud;              /* squeeze 2D elements too (ws.c) */
 void psx_ws_init(int widescreen, int fit_hud);
+void psx_interp_init(int enable);   /* --60fps (interp.c) */
 void psx_ws_mark(int x, int y);
 int  psx_ws_is_projected(int x, int y);
 void psx_ws_new_frame(void);

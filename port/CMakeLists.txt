@@ -163,6 +163,7 @@ add_library(psx_runtime STATIC
     src/psx/mdec.c
     src/psx/xa.c
     src/psx/ws.c
+    src/psx/interp.c
     src/platform_sdl.c)
 target_compile_options(psx_runtime PRIVATE -O2 -fno-strict-aliasing -Wall)
 target_include_directories(psx_runtime PRIVATE src)
@@ -177,7 +178,7 @@ target_link_libraries(mgs PRIVATE psx_runtime SDL2::SDL2 m)
 
 # --- self-tests (no game data needed) ---------------------------------------------
 add_executable(test_runtime tests/test_runtime.c src/psx/gte.c src/psx/libgte.c src/psx/gpu.c src/psx/libgpu.c
-    src/psx/libcd.c src/psx/mdec.c src/psx/xa.c src/psx/spu.c src/psx/ws.c)
+    src/psx/libcd.c src/psx/mdec.c src/psx/xa.c src/psx/spu.c src/psx/ws.c src/psx/interp.c)
 target_include_directories(test_runtime PRIVATE src)
 target_link_libraries(test_runtime PRIVATE m)
 enable_testing()
