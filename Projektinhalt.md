@@ -20,6 +20,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 | 2026-10-22 | Software-Rasterizer statt OpenGL | Exaktes PS1-Verhalten (VRAM, Halbtransparenz, Render-to-Texture) ohne Sonderfälle; Hochauflösung später als Option |
 | 2026-10-22 | Interrupts an sicheren Punkten statt echter Unterbrechung | Nativer Code ist nicht unterbrechbar; Task-Wechsel im Interrupt über nachgebildete Kernel-Tabellen |
 | 2026-10-22 | MDEC-Ausgabe synchron statt per DMA-Interrupt | Spiel-Callback wird sofort bedient; Folgeanforderungen aus dem Callback laufen in einer Schleife statt rekursiv |
+| 2026-10-22 | Englisch erzwingen (Standard), `--japanese` als Schalter | Integral hat englische Sprachausgabe; Spracheinstellung wird jedes Frame gesetzt, weil Spielstände/Optionsmenü sie überschreiben |
 | 2026-10-22 | Overlays fest eingebunden, je Overlay vorgelinkt mit lokalisierten Symbolen | Eine einzige Programmdatei, keine DLL-/dlopen-Probleme, keine Symbolkonflikte zwischen Overlays |
 
 ## Technik
@@ -49,6 +50,9 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 
 ## Offene Punkte
 
+- [ ] Mit Disc-Image prüfen, welche Texte trotz Englisch-Einstellung japanisch bleiben; ggf. übersetzen
+- [ ] Option: US-Version dekompilieren (SLUS-00594) – nur gemeinsam mit upstream sinnvoll
+
 - [ ] Test mit eigenem Disc-Image (SLPM-86247), Fehler beheben
 - [x] Filmsequenzen: CD-Streaming (`St*`), VLC, MDEC, XA-Audio
 - [ ] Filmwiedergabe mit echten Filmen prüfen
@@ -65,3 +69,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-22:** Repo umbenannt in MetalgearRecomp. Nativer PC-Port begonnen und lauffähig bis zum Boot: Build-System, Assembler-Übersetzer, komplette Laufzeitschicht (Kernel, GTE, GPU, SPU, CD, Pad, Memory Card), Overlay-Einbindung, Linux- und Windows-Build, Selbsttests.
 - **2026-10-22:** Filmwiedergabe eingebaut: CD-Streaming mit echter Laufwerksrate, STR-Frame-Zusammensetzung, VLC-Dekoder (STR v2/v3), MDEC (IDCT, YUV→RGB), XA-ADPCM-Filmton im SPU-Mixer. Ende-zu-Ende-Test mit selbst erzeugtem Disc-Image.
 - **2026-10-22:** Hall (SPU-Reverb) eingebaut: Hardware-Formel mit 22050 Hz, alle PsyQ-Presets, Arbeitsbereich im Sound-RAM. Test: Nachhall klingt über ca. 2 s ab, ohne Hall endet der Impuls sofort.
+- **2026-10-22:** Englisch erzwingen eingebaut (`GM_CONFIG_ENGLISH` jedes Frame, Schalter `--japanese`), im laufenden Spiel per Debugger geprüft. Compiler-Warnungen bereinigt.

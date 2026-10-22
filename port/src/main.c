@@ -10,6 +10,7 @@
 
 int  mgs_game_main(void);
 void psx_card_init(const char *dir);
+extern int mgs_force_english;
 
 static void usage(const char *argv0)
 {
@@ -18,6 +19,7 @@ static void usage(const char *argv0)
            "  --save-dir DIR   directory for memcard1.mcd (default: current directory)\n"
            "  --scale N        window scale (default 3)\n"
            "  --fullscreen     start in fullscreen (F11 toggles)\n"
+           "  --japanese       keep the game's own language setting (default: English)\n"
            "\n"
            "Keys: arrows = d-pad, X = cross, C = circle, Z = square, V = triangle,\n"
            "      A/S = L1/R1, Q/W = L2/R2, Enter = start, Backspace = select, Esc = quit\n",
@@ -38,6 +40,8 @@ int main(int argc, char **argv)
             scale = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--fullscreen"))
             fullscreen = 1;
+        else if (!strcmp(argv[i], "--japanese"))
+            mgs_force_english = 0;
         else {
             usage(argv[0]);
             return strcmp(argv[i], "--help") ? 1 : 0;

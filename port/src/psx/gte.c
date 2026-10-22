@@ -269,9 +269,12 @@ unsigned int psx_gte_read_data(int reg)
         return SXY2;
     case 28: case 29: {
         s32 r = (s32)IR1 >> 7, g = (s32)IR2 >> 7, b = (s32)IR3 >> 7;
-        if (r < 0) r = 0; if (r > 0x1F) r = 0x1F;
-        if (g < 0) g = 0; if (g > 0x1F) g = 0x1F;
-        if (b < 0) b = 0; if (b > 0x1F) b = 0x1F;
+        if (r < 0) r = 0;
+        if (r > 0x1F) r = 0x1F;
+        if (g < 0) g = 0;
+        if (g > 0x1F) g = 0x1F;
+        if (b < 0) b = 0;
+        if (b > 0x1F) b = 0x1F;
         return (u32)(r | (g << 5) | (b << 10));
     }
     case 31: {
