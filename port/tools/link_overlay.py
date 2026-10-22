@@ -31,7 +31,8 @@ def main():
     objs = sys.argv[7:]
     tmp = out + '.tmp.o'
 
-    cc_args = cc.split(';')
+    # compiler plus its flags, passed as one CMake list
+    cc_args = [a for part in cc.split(';') for a in part.split()]
     run(cc_args + ['-r', '-nostdlib', '-o', tmp] + objs)
 
     table = prefix + '_StageCharacterEntries'

@@ -18,6 +18,15 @@
 
 extern void *StageCharacterEntries;
 
+int mgs_native_overlay_available(const char *name)
+{
+    const NativeOverlay *ov;
+    for (ov = mgs_native_overlays; ov->name; ov++)
+        if (strcmp(ov->name, name) == 0)
+            return 1;
+    return 0;
+}
+
 void mgs_native_overlay_loaded(int id)
 {
     const NativeOverlay *ov;

@@ -33,8 +33,12 @@ def objects(text):
 
 
 def overlay_names(template_text):
-    """Every overlay name tested in the template ({% if OVERLAY == "x" %})."""
-    return sorted(set(re.findall(r'OVERLAY\s*==\s*"([a-z0-9_]+)"', template_text)))
+    """Every overlay name tested in the template ({% if OVERLAY == "x" %} or
+    {% elif OVERLAY in ["x", "y"] %})."""
+    names = set(re.findall(r'OVERLAY\s*==\s*"([a-z0-9_]+)"', template_text))
+    for group in re.findall(r'OVERLAY\s+in\s*\[([^\]]*)\]', template_text):
+        names.update(re.findall(r'"([a-z0-9_]+)"', group))
+    return sorted(names)
 
 
 def resolve(root, obj):

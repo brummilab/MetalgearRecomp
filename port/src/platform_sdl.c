@@ -4,6 +4,7 @@
  */
 #include "psx/psx.h"
 
+#define SDL_MAIN_HANDLED
 #include <SDL.h>
 
 static SDL_Window   *window;
@@ -48,6 +49,7 @@ int plat_init(int scale, int fullscreen)
 {
     SDL_AudioSpec want, have;
 
+    SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
         psx_log("SDL_Init: %s\n", SDL_GetError());
         return -1;

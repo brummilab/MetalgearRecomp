@@ -11,15 +11,11 @@
  */
 #include "psx.h"
 
+#include "os.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <ucontext.h>
-#endif
 
 /* ---- kernel tables (struct ToT / TCBH / TCB from kernel.h) -------------- */
 
@@ -48,12 +44,7 @@ typedef struct {
     int   used;
     int   crit;             /* per-thread interrupt state (SR.IEc) */
     long (*entry)(void);
-#ifdef _WIN32
-    LPVOID fiber;
-#else
-    ucontext_t ctx;
-    void      *stack;
-#endif
+    os_fiber *fiber;
 } Thread;
 
 static Thread threads[MAX_THREADS];
@@ -185,11 +176,7 @@ void SwExitCriticalSection(void)
 
 /* ---- threads ------------------------------------------------------------- */
 
-#ifdef _WIN32
-static void CALLBACK thread_main(LPVOID arg)
-#else
 static void thread_main(void)
-#endif
 {
     threads[current].entry();
     psx_fatal("thread %d returned from its entry point", current);
@@ -205,11 +192,7 @@ static void switch_to(int target)
     current = target;
     crit = threads[target].crit;
     tcbh.entry = &tcbs[target];
-#ifdef _WIN32
-    SwitchToFiber(threads[target].fiber);
-#else
-    swapcontext(&threads[from].ctx, &threads[target].ctx);
-#endif
+    os_fiber_switch(threads[from].fiber, threads[target].fiber);
 }
 
 long SetConf(unsigned long ev, unsigned long tcb, unsigned long sp)
@@ -226,7 +209,8 @@ long OpenTh(long (*func)(void), unsigned long sp, unsigned long gp)
     Thread *t;
 
     (void)sp; (void)gp; /* the game's PS1-sized stacks are far too small */
-    for (i = 1; i < MAX_THREADS && threads[i].used; i++)
+    /* never reuse the running thread's slot: its fiber is still executing */
+    for (i = 1; i < MAX_THREADS && (threads[i].used || i == current); i++)
         ;
     if (i == MAX_THREADS)
         return -1;
@@ -236,21 +220,11 @@ long OpenTh(long (*func)(void), unsigned long sp, unsigned long gp)
     t->entry = func;
     memset(&tcbs[i], 0, sizeof(tcbs[i]));
     tcbs[i].status = 0x4000; /* TcbStACTIVE */
-#ifdef _WIN32
-    if (t->fiber)
-        DeleteFiber(t->fiber);
-    t->fiber = CreateFiber(THREAD_STACK_SIZE, thread_main, NULL);
+    /* a previous fiber of this slot has finished (CloseTh) and is not running */
+    os_fiber_destroy(t->fiber);
+    t->fiber = os_fiber_create(thread_main, THREAD_STACK_SIZE);
     if (!t->fiber)
-        psx_fatal("CreateFiber failed");
-#else
-    if (!t->stack)
-        t->stack = malloc(THREAD_STACK_SIZE);
-    getcontext(&t->ctx);
-    t->ctx.uc_stack.ss_sp = t->stack;
-    t->ctx.uc_stack.ss_size = THREAD_STACK_SIZE;
-    t->ctx.uc_link = NULL;
-    makecontext(&t->ctx, thread_main, 0);
-#endif
+        psx_fatal("cannot create thread");
     return (long)(0xFF000000u | (unsigned)i);
 }
 
@@ -269,7 +243,7 @@ int CloseTh(long tid)
     if (i <= 0 || i >= MAX_THREADS)
         return 0;
     /* the fiber/stack is recycled by the next OpenTh of this slot */
-    threads[i].used = (i == current);
+    threads[i].used = 0;
     tcbs[i].status = 0x1000; /* TcbStUNUSED */
     return 1;
 }
@@ -289,11 +263,9 @@ void psx_kernel_init(void)
     threads[0].crit = 1;
     current = 0;
     tcbh.entry = &tcbs[0];
-#ifdef _WIN32
-    threads[0].fiber = ConvertThreadToFiber(NULL);
+    threads[0].fiber = os_fiber_init_main();
     if (!threads[0].fiber)
-        psx_fatal("ConvertThreadToFiber failed");
-#endif
+        psx_fatal("cannot convert the main thread into a fiber");
     psx_ToT[1].head = (unsigned long *)&tcbh;
     psx_ToT[1].size = sizeof(tcbh);
     psx_ToT[2].head = (unsigned long *)tcbs;

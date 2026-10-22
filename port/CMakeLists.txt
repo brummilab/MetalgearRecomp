@@ -149,6 +149,7 @@ target_include_directories(mgs_glue PRIVATE ${MGS_GAME_INCLUDES} ${CMAKE_CURRENT
 
 # --- PlayStation runtime + platform ----------------------------------------------
 add_library(psx_runtime STATIC
+    src/psx/os.c
     src/psx/mem.c
     src/psx/kernel.c
     src/psx/gte.c
@@ -172,16 +173,22 @@ set_source_files_properties(${MGS_OVERLAY_OBJECTS} PROPERTIES EXTERNAL_OBJECT TR
 target_include_directories(mgs PRIVATE src)
 target_link_libraries(mgs PRIVATE psx_runtime SDL2::SDL2 m)
 
+# --- self-tests (no game data needed) ---------------------------------------------
+add_executable(test_runtime tests/test_runtime.c src/psx/gte.c src/psx/libgte.c src/psx/gpu.c src/psx/libgpu.c)
+target_include_directories(test_runtime PRIVATE src)
+target_link_libraries(test_runtime PRIVATE m)
+enable_testing()
+add_test(NAME runtime COMMAND test_runtime)
+
 # Memory layout (see src/psx/psx.h): the image must stay below 16 MiB so the
 # GPU's 24-bit ordering-table links can address it, the PS1 RAM window at
 # 0x80000000 must be reachable, and _bss_orgend marks the overlay area.
-if(WIN32)
-    target_link_options(mgs PRIVATE -Wl,--image-base=0x00400000 -Wl,--large-address-aware
-                        -Wl,--disable-dynamicbase -Wl,--defsym=__bss_orgend=0x800B0000)
-    if(TARGET SDL2::SDL2main)
-        target_link_libraries(mgs PRIVATE SDL2::SDL2main)
+foreach(t mgs test_runtime)
+    if(WIN32)
+        target_link_options(${t} PRIVATE -Wl,--image-base=0x00400000 -Wl,--large-address-aware
+                            -Wl,--disable-dynamicbase -Wl,--defsym=__bss_orgend=0x800B0000)
+    else()
+        target_compile_options(${t} PRIVATE -fno-pie)
+        target_link_options(${t} PRIVATE -no-pie -Wl,-Ttext-segment=0x00400000 -Wl,--defsym=_bss_orgend=0x800B0000)
     endif()
-else()
-    target_compile_options(mgs PRIVATE -fno-pie)
-    target_link_options(mgs PRIVATE -no-pie -Wl,-Ttext-segment=0x00400000 -Wl,--defsym=_bss_orgend=0x800B0000)
-endif()
+endforeach()
