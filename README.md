@@ -43,7 +43,8 @@ MetalgearRecomp/
 │   ├── build-port.sh    # PC-Port bauen (linux | windows)
 │   └── build.sh         # PS1-Matching-Build + Hash-Check
 ├── docs/
-│   └── workflow.md      # Anleitung: eine Funktion dekompilieren
+│   ├── workflow.md      # Anleitung: eine Funktion dekompilieren
+│   └── decompme-status.md # täglicher Überblick über decomp.me/preset/19
 └── Projektinhalt.md     # Projektübersicht und Verlauf
 ```
 
@@ -79,6 +80,9 @@ Hinweis: Wine stürzt bei vielen parallelen Compiler-Prozessen gelegentlich ab.
 `scripts/build.sh` baut dann mit `JOBS=2` weiter.
 
 ## Mitarbeiten
+
+Fortschritt auf decomp.me: [docs/decompme-status.md](docs/decompme-status.md)
+(täglich aktualisierte Übersicht über [decomp.me/preset/19](https://decomp.me/preset/19)).
 
 - Dekompilieren: [docs/workflow.md](docs/workflow.md). Kurzfassung: Funktion
   aus `asm/overlays/` wählen, auf [decomp.me](https://decomp.me/preset/19)

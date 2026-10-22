@@ -42,6 +42,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - `port/` – nativer PC-Port, siehe `port/README.md`
 - `scripts/setup.sh`, `scripts/build-port.sh`, `scripts/build.sh`
 - `docs/workflow.md` – Anleitung zum Dekompilieren einer Funktion
+- `docs/decompme-status.md` – täglicher Überblick über https://decomp.me/preset/19 (`scripts/decompme_status.py`)
 
 ## Stand (22.10.2026)
 
@@ -53,6 +54,8 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - Mit echtem Disc-Image noch nicht getestet
 
 ## Offene Punkte
+
+- [ ] Overlay **brf** ist auf decomp.me komplett gematcht (44/44) – sobald upstream gemergt: Submodul aktualisieren, Port übernimmt es automatisch
 
 - [ ] Mit Disc-Image prüfen, welche Texte trotz Englisch-Einstellung japanisch bleiben; ggf. übersetzen
 - [ ] Option: US-Version dekompilieren (SLUS-00594) – nur gemeinsam mit upstream sinnvoll
@@ -82,3 +85,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-22:** Höhere Auflösung (1×/2×/4×) und Breitbild eingebaut; Rasterizer auf Spannen mit inkrementellen Gradienten umgestellt. Tests: Hochauflösung stimmt mit Originalpixeln überein, Breitbild-Projektion, Leistungsmessung.
 - **2026-10-22:** HUD im Breitbild unverzerrt: 2D-Elemente werden um die Mitte gestaucht, 3D über GTE-Positions-Cache erkannt; Filme im Breitbild als 4:3 mit Rändern. Tests bei 1× und 2×, 16:9-Vorschau geprüft.
 - **2026-10-22:** 60 fps (experimentell) eingebaut: interpolierte Zwischenbilder ohne Änderung der Spiellogik, für beide Doppelpuffer-Varianten, mit Schutz vor Kameraschnitten. Tests mit bewegtem Objekt grün.
+- **2026-10-22:** Überblick über decomp.me/preset/19 eingerichtet: `docs/decompme-status.md` (Fortschritt pro Overlay, Mitwirkende, neueste Scratches), tägliche Aktualisierung als geplante Aufgabe. Erster Stand: brf 44/44 gematcht, s14e 13/42.
