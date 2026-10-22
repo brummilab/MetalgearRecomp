@@ -23,7 +23,7 @@ werden durch eine eigene Laufzeitschicht ersetzt.
 | Stages | 62 Overlays nativ; 18 (z. B. `s07b`, `s08b`, `s11d`, `s11g`, `s14e`, `s19b`) fehlen noch upstream |
 | Grafik | ✔️ Software-GPU (alle GP0-Befehle, Halbtransparenz, Dithering, Maskenbit) |
 | 3D-Mathematik | ✔️ GTE-Emulation nach Hardware-Spezifikation |
-| Sound | ✔️ SPU mit 24 ADPCM-Stimmen und ADSR, XA-Audio (Filmton); ⏳ Reverb |
+| Sound | ✔️ SPU mit 24 ADPCM-Stimmen, ADSR, Hall (Reverb nach Hardware-Formel, alle PsyQ-Presets), XA-Audio (Filmton) |
 | Filmsequenzen (STR/MDEC) | ✔️ CD-Streaming in Echtzeit, VLC-Dekoder (STR v2/v3), MDEC, XA-Ton; mit Testdaten geprüft, mit echten Filmen noch nicht |
 | Speicherstände | ✔️ Memory-Card-Image `memcard1.mcd` (Standardformat, emulatorkompatibel) |
 | Eingabe | ✔️ Tastatur und Gamepads (SDL GameController, analog) |
@@ -102,7 +102,7 @@ port/
 │       ├── kernel.c        Threads (Fibers), Interrupts, Events, BIOS
 │       ├── gte.c libgte.c  Geometrie-Coprozessor
 │       ├── gpu.c libgpu.c  Grafikchip (Software-Rasterizer), Ordering Tables
-│       ├── spu.c           Soundchip
+│       ├── spu.c           Soundchip inkl. Hall (Reverb)
 │       ├── libcd.c         CD-Laufwerk aus Disc-Image, Streaming (St*)
 │       ├── libpad.c        Controller
 │       ├── card.c          Memory Card + „bu00:“-Dateisystem
@@ -149,10 +149,23 @@ die MIPS-Charaktertabelle durch die native.
 ## Nächste Schritte
 
 1. Mit einem echten Disc-Image testen und Abstürze bzw. Grafikfehler beheben.
-2. SPU-Reverb.
-3. Hochauflösendes Rendering / Breitbild als Option.
-4. Neue upstream dekompilierte Overlays erscheinen automatisch: Submodul
+2. Hochauflösendes Rendering / Breitbild als Option.
+3. Neue upstream dekompilierte Overlays erscheinen automatisch: Submodul
    aktualisieren und neu bauen.
+
+### Hall (Reverb)
+
+MGS schaltet den Modus *Studio Large* mit halber Tiefe für die Kanäle 0–12
+ein. `spu.c` rechnet den Hall wie die Hardware (psx-spx „SPU Reverb Formula“):
+
+- 22050 Hz, Arbeitsbereich oben im Sound-RAM, Ringpuffer mit Wrap
+- Reflexionen auf derselben und der Gegenseite, vier Kammfilter, zwei
+  Allpassfilter, Sättigung auf 16 Bit
+- Registerwerte aller PsyQ-Modi (Room, Studio A/B/C, Hall, Space, Echo,
+  Delay, Pipe) aus den dokumentierten Presets
+- Vereinfachung: Statt des 39-Tap-FIR-Filters der Hardware wird beim
+  Wechsel 44,1↔22,05 kHz einfach gemittelt bzw. gehalten. Die Parameter
+  *delay*/*feedback* der Modi Echo/Delay werden ignoriert; MGS nutzt sie nicht.
 
 ### Filmwiedergabe
 
