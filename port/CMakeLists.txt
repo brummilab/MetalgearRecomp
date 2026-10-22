@@ -133,10 +133,30 @@ if(MGS_OVERLAY_ALL_SOURCES)
     set(MGS_LINKED_OVERLAYS ${MGS_OVERLAYS})
 endif()
 
+# --- recompiled overlays ---------------------------------------------------------
+# Overlays that still contain assembly are recompiled from their original
+# binary (tools/recomp.py), which the PS1 matching build (scripts/build.sh)
+# leaves in ${MGS_ROOT}/obj. Without that build they stay unavailable.
+option(MGS_RECOMP_OVERLAYS "Recompile the overlays that are not fully decompiled from the PS1 build" ON)
+set(MGS_RECOMP_SKIP "rank" CACHE STRING
+    "Overlays not to recompile (rank drives timer and pad hardware registers directly)")
+set(MGS_RECOMPILED)
+if(MGS_RECOMP_OVERLAYS AND MGS_WITH_OVERLAYS)
+    foreach(ov ${MGS_OVERLAYS_INCOMPLETE})
+        if(EXISTS "${MGS_ROOT}/obj/${ov}.bin" AND EXISTS "${MGS_ROOT}/obj/asm_${ov}_lhs.map"
+           AND NOT ov IN_LIST MGS_RECOMP_SKIP)
+            list(APPEND MGS_RECOMPILED ${ov})
+        endif()
+    endforeach()
+    list(LENGTH MGS_RECOMPILED n)
+    message(STATUS "Recompiled overlays (${n}): ${MGS_RECOMPILED}")
+endif()
+
 set(OVERLAY_TABLE "${CMAKE_CURRENT_BINARY_DIR}/overlay_table.c")
 add_custom_command(
     OUTPUT ${OVERLAY_TABLE}
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_overlay_table.py ${OVERLAY_TABLE} ${MGS_LINKED_OVERLAYS}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_overlay_table.py ${OVERLAY_TABLE}
+            ${MGS_LINKED_OVERLAYS} --recomp ${MGS_RECOMPILED}
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_overlay_table.py
     VERBATIM)
 
@@ -164,14 +184,58 @@ add_library(psx_runtime STATIC
     src/psx/xa.c
     src/psx/ws.c
     src/psx/interp.c
+    src/psx/recomp_rt.c
     src/platform_sdl.c)
 target_compile_options(psx_runtime PRIVATE -O2 -fno-strict-aliasing -Wall)
 target_include_directories(psx_runtime PRIVATE src)
 target_link_libraries(psx_runtime PRIVATE SDL2::SDL2)
 
+# Symbol lists of the native program for the recompiler: what recompiled code
+# may reference, and which PsyQ library functions the runtime replaces.
+set(RC_DIR "${CMAKE_CURRENT_BINARY_DIR}/recomp")
+set(RC_NATIVE "${RC_DIR}/native_syms.txt")
+set(RC_RUNTIME "${RC_DIR}/runtime_syms.txt")
+set(RC_FLAGS -O1 -fno-builtin -fno-stack-protector -fno-pie -fno-strict-aliasing -w)
+set(MGS_RECOMP_OBJECTS)
+set(MGS_HAVE_PS1_EXE OFF)
+if(EXISTS "${MGS_ROOT}/obj/_mgsi.exe" AND EXISTS "${MGS_ROOT}/obj/asm.map")
+    set(MGS_HAVE_PS1_EXE ON)
+endif()
+if(MGS_RECOMPILED OR MGS_HAVE_PS1_EXE)
+    add_custom_command(
+        OUTPUT ${RC_NATIVE} ${RC_RUNTIME}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${RC_DIR}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/native_syms.py
+                ${CMAKE_NM} --prefix=${MGS_SYM_PREFIX} ${RC_NATIVE} ${RC_RUNTIME} $<TARGET_FILE:psx_runtime>
+                $<TARGET_OBJECTS:mgs_game> $<TARGET_OBJECTS:mgs_glue> ${MGS_OVERLAY_OBJECTS}
+        DEPENDS psx_runtime mgs_game mgs_glue $<TARGET_OBJECTS:mgs_game> $<TARGET_OBJECTS:mgs_glue>
+                ${MGS_OVERLAY_OBJECTS} ${CMAKE_CURRENT_SOURCE_DIR}/tools/native_syms.py
+        COMMENT "Collecting native symbols for the recompiler"
+        COMMAND_EXPAND_LISTS
+        VERBATIM)
+endif()
+if(MGS_RECOMPILED)
+    set(rc_sources)
+    foreach(ov ${MGS_RECOMPILED})
+        add_custom_command(
+            OUTPUT ${RC_DIR}/${ov}.c
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/recomp.py overlay ${ov}
+                    ${MGS_ROOT}/obj/${ov}.bin ${MGS_ROOT}/obj/asm_${ov}_lhs.map ${RC_NATIVE} ${RC_RUNTIME}
+                    ${MGS_ROOT}/source ${RC_DIR}/${ov}.c
+            DEPENDS ${MGS_ROOT}/obj/${ov}.bin ${MGS_ROOT}/obj/asm_${ov}_lhs.map ${RC_NATIVE} ${RC_RUNTIME}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/recomp.py
+            COMMENT "Recompiling overlay ${ov}"
+            VERBATIM)
+        list(APPEND rc_sources ${RC_DIR}/${ov}.c)
+    endforeach()
+    add_library(mgs_recomp OBJECT ${rc_sources})
+    target_compile_options(mgs_recomp PRIVATE ${RC_FLAGS})
+    set(MGS_RECOMP_OBJECTS $<TARGET_OBJECTS:mgs_recomp>)
+endif()
+
 # --- executable ----------------------------------------------------------------
 add_executable(mgs src/main.c
-    $<TARGET_OBJECTS:mgs_game> $<TARGET_OBJECTS:mgs_glue> ${MGS_OVERLAY_OBJECTS})
+    $<TARGET_OBJECTS:mgs_game> $<TARGET_OBJECTS:mgs_glue> ${MGS_OVERLAY_OBJECTS} ${MGS_RECOMP_OBJECTS})
 set_source_files_properties(${MGS_OVERLAY_OBJECTS} PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
 target_include_directories(mgs PRIVATE src)
 target_link_libraries(mgs PRIVATE psx_runtime SDL2::SDL2 m)
@@ -184,15 +248,41 @@ target_link_libraries(test_runtime PRIVATE m)
 enable_testing()
 add_test(NAME runtime COMMAND test_runtime)
 
+# The recompiler checked against the compiler: functions of the original
+# executable, recompiled from the PS1 build, must behave like their natively
+# compiled decompiled source.
+set(MGS_TEST_TARGETS mgs test_runtime)
+if(MGS_HAVE_PS1_EXE)
+    set(RC_TEST_FUNCS GV_StrCode GV_AddVec3 GV_SubVec3 GV_VecLen3 GV_DiffVec3 GV_VecDir2
+        GV_DiffDirU GV_DiffDirS GV_DiffDirAbs GV_NearExp2 GV_NearExp4)
+    add_custom_command(
+        OUTPUT ${RC_DIR}/exe_funcs.c
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/recomp.py exe
+                ${MGS_ROOT}/obj/_mgsi.exe ${MGS_ROOT}/obj/asm.map ${RC_NATIVE} ${MGS_ROOT}/source
+                ${RC_DIR}/exe_funcs.c ${RC_TEST_FUNCS}
+        DEPENDS ${MGS_ROOT}/obj/_mgsi.exe ${MGS_ROOT}/obj/asm.map ${RC_NATIVE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/recomp.py
+        COMMENT "Recompiling test functions of the original executable"
+        VERBATIM)
+    set_source_files_properties(${RC_DIR}/exe_funcs.c PROPERTIES COMPILE_OPTIONS "${RC_FLAGS}")
+    add_executable(test_recomp tests/test_recomp.c ${RC_DIR}/exe_funcs.c
+        $<TARGET_OBJECTS:mgs_game> $<TARGET_OBJECTS:mgs_glue> ${MGS_OVERLAY_OBJECTS} ${MGS_RECOMP_OBJECTS})
+    target_include_directories(test_recomp PRIVATE src)
+    target_compile_definitions(test_recomp PRIVATE MGS_OBJ_DIR="${MGS_ROOT}/obj")
+    target_link_libraries(test_recomp PRIVATE psx_runtime SDL2::SDL2 m)
+    add_test(NAME recomp COMMAND test_recomp)
+    list(APPEND MGS_TEST_TARGETS test_recomp)
+endif()
+
 # Memory layout (see src/psx/psx.h): the image must stay below 16 MiB so the
 # GPU's 24-bit ordering-table links can address it, the PS1 RAM window at
 # 0x80000000 must be reachable, and _bss_orgend marks the overlay area.
-foreach(t mgs test_runtime)
+foreach(t ${MGS_TEST_TARGETS})
     if(WIN32)
         target_link_options(${t} PRIVATE -Wl,--image-base=0x00400000 -Wl,--large-address-aware
-                            -Wl,--disable-dynamicbase -Wl,--defsym=__bss_orgend=0x800B0000)
+                            -Wl,--disable-dynamicbase -Wl,--defsym=__bss_orgend=0x800C3208)
     else()
         target_compile_options(${t} PRIVATE -fno-pie)
-        target_link_options(${t} PRIVATE -no-pie -Wl,-Ttext-segment=0x00400000 -Wl,--defsym=_bss_orgend=0x800B0000)
+        target_link_options(${t} PRIVATE -no-pie -Wl,-Ttext-segment=0x00400000 -Wl,--defsym=_bss_orgend=0x800C3208)
     endif()
 endforeach()

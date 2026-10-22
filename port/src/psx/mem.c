@@ -11,16 +11,21 @@
 
 int psx_mem_init(void)
 {
-    if (!os_map_fixed(PSX_RAM_BASE, PSX_RAM_SIZE)) {
+    /* executable: recompiled overlays get x86 entry thunks in their code area */
+    if (!os_map_fixed(PSX_RAM_BASE, PSX_RAM_SIZE, 1)) {
         psx_fatal("cannot map PS1 RAM at 0x%08X (needs a 32-bit build; on Windows a\n"
                   "64-bit OS and a large-address-aware executable)", PSX_RAM_BASE);
         return -1;
     }
-    if (!os_map_fixed(PSX_SPAD_BASE, PSX_SPAD_SIZE)) {
+    if (!os_map_fixed(PSX_SPAD_BASE, PSX_SPAD_SIZE, 0)) {
         psx_fatal("cannot map scratchpad at 0x%08X", PSX_SPAD_BASE);
         return -1;
     }
     memset((void *)(uintptr_t)PSX_RAM_BASE, 0, PSX_RAM_SIZE);
     memset((void *)(uintptr_t)PSX_SPAD_BASE, 0, PSX_SPAD_SIZE);
+    /* kernel area and original executable: unused natively, so any stray
+     * access (e.g. an untranslated address in recompiled code) faults */
+    if (os_protect_none(PSX_RAM_BASE, PSX_MAIN_GUARD_END - PSX_RAM_BASE) != 0)
+        psx_log("mem: cannot protect the original executable area\n");
     return 0;
 }

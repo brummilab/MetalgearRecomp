@@ -6,6 +6,11 @@
  * first thing in every overlay) is replaced with the table of the natively
  * compiled overlay, so GM_GetCharaID() finds native constructors.
  *
+ * Overlays that are not fully decompiled yet are recompiled from their
+ * original binary (tools/recomp.py). Their image stays where the game loaded
+ * it, chara table included; installing them writes jumps to the recompiled
+ * functions into the code area (psx_recomp_install).
+ *
  * Compiled as game code (PsyQ headers).
  */
 #include <stdio.h>
@@ -15,14 +20,19 @@
 #include "game/game.h"
 #include "charadef.h"
 #include "native_overlay.h"
+#include "../psx/recomp.h"
 
 extern void *StageCharacterEntries;
 
 int mgs_native_overlay_available(const char *name)
 {
     const NativeOverlay *ov;
+    const RecompOverlay *rc;
     for (ov = mgs_native_overlays; ov->name; ov++)
         if (strcmp(ov->name, name) == 0)
+            return 1;
+    for (rc = mgs_recomp_overlays; rc->name; rc++)
+        if (strcmp(rc->name, name) == 0)
             return 1;
     return 0;
 }
@@ -30,6 +40,7 @@ int mgs_native_overlay_available(const char *name)
 void mgs_native_overlay_loaded(int id)
 {
     const NativeOverlay *ov;
+    const RecompOverlay *rc;
     CHARA *dst = (CHARA *)StageCharacterEntries;
     int n;
 
@@ -40,6 +51,16 @@ void mgs_native_overlay_loaded(int id)
             ;
         memcpy(dst, ov->charas, (n + 1) * sizeof(CHARA));
         printf("native overlay %s: %d charas\n", ov->name, n);
+        return;
+    }
+    for (rc = mgs_recomp_overlays; rc->name; rc++) {
+        if ((GV_StrCode((char *)rc->name) & 0xFFFF) != (id & 0xFFFF))
+            continue;
+        if ((unsigned int)dst != rc->ov->base) {
+            printf("recompiled overlay %s: loaded to %p instead of 0x%08x\n", rc->name, dst, rc->ov->base);
+            break;
+        }
+        psx_recomp_install(rc->ov);
         return;
     }
     printf("native overlay %04x: not available (not fully decompiled yet)\n", id & 0xFFFF);

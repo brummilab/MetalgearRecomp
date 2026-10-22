@@ -26,14 +26,18 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 | 2026-10-22 | HUD-Erkennung über Cache der GTE-Bildschirmpositionen (≥ 2 Treffer = 3D), Sprites immer 2D | Keine Änderung am Spielcode; Schwelle 2 verhindert HUD-Flackern durch Zufallstreffer |
 | 2026-10-22 | 60 fps als experimentelle Option über Zwischenbilder (Vertex-Zuordnung per Wert, Schlüssel aus Matrixadresse + Reihenfolge) | Spiellogik zählt in Frames und darf nicht schneller laufen; Projektion wird in Scratchpad-Tabellen kopiert, daher Zuordnung über Wert statt Adresse |
 | 2026-10-22 | Overlays fest eingebunden, je Overlay vorgelinkt mit lokalisierten Symbolen | Eine einzige Programmdatei, keine DLL-/dlopen-Probleme, keine Symbolkonflikte zwischen Overlays |
+| 2026-10-22 | Unfertige Overlays (brf u. a.) statisch aus dem PS1-Build recompilieren statt von Hand fertig zu dekompilieren | Ein Werkzeug für alle 18 Overlays statt ca. 9000 Befehle Handarbeit; Maschinencode aus eigenem Build, keine Spieldaten im Repo; dekompilierter Code hat Vorrang |
+| 2026-10-22 | x86-Sprünge (Thunks) an den Original-Einsprungadressen, Overlay bleibt an 0x800C3208 | Funktionszeiger in Tabellen/Actors funktionieren ohne Zeigerübersetzung; Overlay-Daten bleiben unverändert adressierbar |
+| 2026-10-22 | Statisch eingelinkte PsyQ-Funktionen in Overlays → Laufzeitschicht | Die Kopien würden Hardware-Register ansprechen (MDEC-DMA, CD) |
+| 2026-10-22 | Overlay `rank` vorerst nicht recompiliert | Greift direkt auf Timer- und Pad-Register zu |
 
 ## Technik
 
 - **PS1-Build:** PsyQ 4.4/4.3 (`cc1psx.exe`, GCC 2.8) unter Wine, Ninja, SHA256-Prüfung
 - **PC-Port:** CMake + Ninja, GCC/Clang (Linux, `-m32`) bzw. MinGW-w64 i686 (Windows), SDL2
 - **Laufzeitschicht** (`port/src/psx`): Kernel/Threads (Fibers), GTE, GPU (Software), SPU, CD (.bin/.iso), Pad, Memory Card (.mcd)
-- **Werkzeuge** (`port/tools`): `gen_sources.py`, `asm2c.py`, `link_overlay.py`, `gen_overlay_table.py`
-- **Tests:** `port/tests/test_runtime.c` (GTE-Projektion, NCLIP, Trigonometrie, GPU-Rasterung, Filmkette Streaming→VLC→MDEC + XA)
+- **Werkzeuge** (`port/tools`): `gen_sources.py`, `asm2c.py`, `link_overlay.py`, `gen_overlay_table.py`, `recomp.py` (MIPS→C-Recompiler), `native_syms.py`
+- **Tests:** `port/tests/test_runtime.c` (GTE-Projektion, NCLIP, Trigonometrie, GPU-Rasterung, Filmkette Streaming→VLC→MDEC + XA), `port/tests/test_recomp.c` (recompilierte vs. native Funktionen, Overlay-Installation; nur mit PS1-Build)
 
 ## Struktur
 
@@ -50,12 +54,15 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - PS1-Matching-Build verifiziert: alle 80 Ziele hash-identisch
 - PC-Port Linux: baut, Selbsttests grün, bootet bis zum CD-Zugriff
 - PC-Port Windows: baut (MinGW-Cross), Selbsttests grün, bootet unter Wine gleich weit
-- 168 Quelldateien Hauptprogramm + 62 Overlays nativ eingebunden
+- 168 Quelldateien Hauptprogramm + 62 Overlays nativ eingebunden + 16 Overlays recompiliert (brf, camera, change, d18a, d18ar, s03d, s07b, s08b, s08br, s11d, s11g, s14e, s15c, s19b, s19br, title)
 - Mit echtem Disc-Image noch nicht getestet
 
 ## Offene Punkte
 
-- [ ] Overlay **brf** ist auf decomp.me komplett gematcht (44/44) – sobald upstream gemergt: Submodul aktualisieren, Port übernimmt es automatisch
+- [x] Overlay **brf** (Briefing) eingebaut – über den statischen Recompiler
+- [ ] brf ist auf decomp.me komplett gematcht (44/44) – sobald upstream gemergt: Submodul aktualisieren, Port nimmt dann automatisch die dekompilierte Fassung
+- [ ] Recompilierte Overlays mit echtem Disc-Image prüfen (Briefing, Titel, Stages)
+- [ ] Overlay `rank`: Timer-/Pad-Registerzugriffe abfangen, dann ebenfalls recompilieren
 
 - [ ] Mit Disc-Image prüfen, welche Texte trotz Englisch-Einstellung japanisch bleiben; ggf. übersetzen
 - [ ] Option: US-Version dekompilieren (SLUS-00594) – nur gemeinsam mit upstream sinnvoll
@@ -64,8 +71,8 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - [x] Filmsequenzen: CD-Streaming (`St*`), VLC, MDEC, XA-Audio
 - [ ] Filmwiedergabe mit echten Filmen prüfen
 - [x] SPU-Reverb (Hall)
-- [ ] Titelbildschirm (Overlay `title`) – wartet auf Upstream; bis dahin Start im Stage-Select
-- [ ] Fehlende Stages upstream: brf, camera, change, d18a(r), rank, s03d, s07b(r), s08b(r), s11d, s11g, s14e, s15c, s19b(r), title
+- [x] Titelbildschirm (Overlay `title`) – recompiliert
+- [x] Fehlende Stages (brf, camera, change, d18a(r), s03d, s07b, s08b(r), s11d, s11g, s14e, s15c, s19b(r), title) – recompiliert; s07br hat keinen PS1-Build-Ausgang
 - [x] Hochauflösendes Rendering (2×/4×) und Breitbild (GTE-Hack)
 - [x] HUD im Breitbild unverzerrt (GTE-Positions-Cache), Filme im Breitbild als 4:3
 - [x] 60 fps (experimentell) über interpolierte Zwischenbilder
@@ -86,3 +93,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-22:** HUD im Breitbild unverzerrt: 2D-Elemente werden um die Mitte gestaucht, 3D über GTE-Positions-Cache erkannt; Filme im Breitbild als 4:3 mit Rändern. Tests bei 1× und 2×, 16:9-Vorschau geprüft.
 - **2026-10-22:** 60 fps (experimentell) eingebaut: interpolierte Zwischenbilder ohne Änderung der Spiellogik, für beide Doppelpuffer-Varianten, mit Schutz vor Kameraschnitten. Tests mit bewegtem Objekt grün.
 - **2026-10-22:** Überblick über decomp.me/preset/19 eingerichtet: `docs/decompme-status.md` (Fortschritt pro Overlay, Mitwirkende, neueste Scratches), tägliche Aktualisierung als geplante Aufgabe. Erster Stand: brf 44/44 gematcht, s14e 13/42.
+- **2026-10-22:** Overlay brf (Briefing) eingebaut, und zwar über einen neuen statischen MIPS→C-Recompiler (`port/tools/recomp.py`), der alle unfertigen Overlays aus dem eigenen PS1-Build übersetzt: 16 Overlays inkl. Titelbildschirm, Thunks an den Original-Adressen, Umrechnung auf native Symbole, PsyQ-Kopien → Laufzeitschicht. Test `test_recomp` (Linux + Wine) grün, erkennt absichtliche Fehler. Mit echtem Disc-Image noch nicht getestet.

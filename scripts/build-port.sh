@@ -21,6 +21,8 @@ linux)
           -DPython3_EXECUTABLE="$PY"
     ninja -C "$ROOT/build/linux"
     "$ROOT/build/linux/test_runtime"
+    # nur mit PS1-Build (obj/_mgsi.exe): Recompiler gegen nativ kompilierten Code
+    [ ! -x "$ROOT/build/linux/test_recomp" ] || "$ROOT/build/linux/test_recomp" | tail -1
     echo "Fertig: $ROOT/build/linux/mgs --iso <disc1.bin>"
     ;;
 windows)
