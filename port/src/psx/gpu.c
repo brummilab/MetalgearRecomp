@@ -78,9 +78,12 @@ static inline u16 blend(u16 back, u16 front, int mode)
     case 2: r = br - fr; g = bg - fg; b = bb - fb; break;
     default: r = br + (fr >> 2); g = bg + (fg >> 2); b = bb + (fb >> 2); break;
     }
-    if (r < 0) r = 0; if (r > 31) r = 31;
-    if (g < 0) g = 0; if (g > 31) g = 31;
-    if (b < 0) b = 0; if (b > 31) b = 31;
+    if (r < 0) r = 0;
+    if (r > 31) r = 31;
+    if (g < 0) g = 0;
+    if (g > 31) g = 31;
+    if (b < 0) b = 0;
+    if (b > 31) b = 31;
     return (u16)(r | (g << 5) | (b << 10) | (front & 0x8000));
 }
 
@@ -104,9 +107,12 @@ static inline u16 rgb15(s32 r, s32 g, s32 b, int x, int y, int dither)
         s32 d = dither_tab[y & 3][x & 3];
         r += d; g += d; b += d;
     }
-    if (r < 0) r = 0; if (r > 255) r = 255;
-    if (g < 0) g = 0; if (g > 255) g = 255;
-    if (b < 0) b = 0; if (b > 255) b = 255;
+    if (r < 0) r = 0;
+    if (r > 255) r = 255;
+    if (g < 0) g = 0;
+    if (g > 255) g = 255;
+    if (b < 0) b = 0;
+    if (b > 255) b = 255;
     return (u16)((r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10));
 }
 
@@ -429,7 +435,7 @@ static void exec_poly(const u32 *p)
     int n = quad ? 4 : 3, i, k = 0;
     int flags = (gour ? F_GOURAUD : 0) | (tex ? F_TEXTURED : 0) | ((cmd & 2) ? F_SEMI : 0) | ((tex && (cmd & 1)) ? F_RAW : 0);
     Vtx v[4];
-    TexState ts;
+    TexState ts = { 0, 0, 0, 0, 0 };
 
     memset(v, 0, sizeof(v));
     for (i = 0; i < n; i++) {
@@ -494,7 +500,7 @@ static void exec_rect(const u32 *p)
     Vtx v;
     int k = 1, u0 = 0, v0 = 0;
     s32 w, h;
-    TexState ts;
+    TexState ts = { 0, 0, 0, 0, 0 };
 
     memset(&v, 0, sizeof(v));
     color(p[0], &v);

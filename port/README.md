@@ -28,6 +28,15 @@ werden durch eine eigene Laufzeitschicht ersetzt.
 | Speicherstände | ✔️ Memory-Card-Image `memcard1.mcd` (Standardformat, emulatorkompatibel) |
 | Eingabe | ✔️ Tastatur und Gamepads (SDL GameController, analog) |
 
+### Sprache
+
+*MGS Integral* hat englische Sprachausgabe und eine Spracheinstellung
+(`GM_CONFIG_ENGLISH`) für Texte und Filmuntertitel. Der Port setzt sie
+standardmäßig **bei jedem Frame auf Englisch**, weil Spielstände und das
+Optionsmenü sie sonst zurücksetzen würden (`src/game/native_options.c`).
+Mit `--japanese` bleibt die Einstellung dem Spiel überlassen. Welche Texte
+dabei trotzdem japanisch bleiben, zeigt sich erst mit einem echten Disc-Image.
+
 ## Bauen
 
 Voraussetzungen: CMake ≥ 3.16, Ninja, Python 3 mit `jinja2`, GCC oder Clang
@@ -75,6 +84,7 @@ build\windows\mgs.exe --iso "MGS Integral Disc 1.bin"
 | `--save-dir ORDNER` | Ort von `memcard1.mcd` (Standard: aktueller Ordner) |
 | `--scale N` | Fenstergröße (Standard 3 = 960×720) |
 | `--fullscreen` | Vollbild (F11 schaltet um) |
+| `--japanese` | Spracheinstellung des Spiels unverändert lassen (Standard: Englisch erzwungen) |
 
 **Tastatur:** Pfeiltasten = Steuerkreuz, X = ✕, C = ○, Z = □, V = △,
 A/S = L1/R1, Q/W = L2/R2, Enter = Start, Backspace = Select, Esc = Beenden.

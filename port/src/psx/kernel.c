@@ -84,6 +84,7 @@ static void hw_tick(void)
     psx_gpu_vblank();
     psx_pad_vblank();
     psx_spu_vblank();
+    mgs_native_frame();
 }
 
 void psx_poll(void)

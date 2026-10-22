@@ -105,6 +105,9 @@ void psx_spu_interrupt(void);
 void psx_deliver_event(unsigned long desc, long spec);
 void psx_draw_sync_interrupt(void);
 
+/* game-side hook, called once per vblank (src/game/native_options.c) */
+void mgs_native_frame(void);
+
 /* ---- platform (SDL) ------------------------------------------------------ */
 
 int      plat_init(int scale, int fullscreen);

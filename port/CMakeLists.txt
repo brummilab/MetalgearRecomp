@@ -141,7 +141,7 @@ add_custom_command(
     VERBATIM)
 
 # glue code compiled like game code (PsyQ headers)
-add_library(mgs_glue OBJECT src/game/native_overlay.c ${OVERLAY_TABLE})
+add_library(mgs_glue OBJECT src/game/native_overlay.c src/game/native_options.c ${OVERLAY_TABLE})
 add_dependencies(mgs_glue mgs_translate)
 target_compile_options(mgs_glue PRIVATE ${MGS_GAME_FLAGS} -include ${CMAKE_CURRENT_SOURCE_DIR}/include/mgs_native.h)
 target_compile_definitions(mgs_glue PRIVATE ${MGS_GAME_DEFS})
