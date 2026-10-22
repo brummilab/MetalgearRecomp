@@ -52,7 +52,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - [ ] Test mit eigenem Disc-Image (SLPM-86247), Fehler beheben
 - [x] Filmsequenzen: CD-Streaming (`St*`), VLC, MDEC, XA-Audio
 - [ ] Filmwiedergabe mit echten Filmen prüfen
-- [ ] SPU-Reverb
+- [x] SPU-Reverb (Hall)
 - [ ] Titelbildschirm (Overlay `title`) – wartet auf Upstream; bis dahin Start im Stage-Select
 - [ ] Fehlende Stages upstream: brf, camera, change, d18a(r), rank, s03d, s07b(r), s08b(r), s11d, s11g, s14e, s15c, s19b(r), title
 - [ ] Optional: Hochauflösendes Rendering, Breitbild, 60-fps-Optionen
@@ -64,3 +64,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-22:** Repo angelegt, Submodule eingebunden, Setup-/Build-Skripte, README und Workflow-Doku erstellt. PS1-Matching-Build verifiziert.
 - **2026-10-22:** Repo umbenannt in MetalgearRecomp. Nativer PC-Port begonnen und lauffähig bis zum Boot: Build-System, Assembler-Übersetzer, komplette Laufzeitschicht (Kernel, GTE, GPU, SPU, CD, Pad, Memory Card), Overlay-Einbindung, Linux- und Windows-Build, Selbsttests.
 - **2026-10-22:** Filmwiedergabe eingebaut: CD-Streaming mit echter Laufwerksrate, STR-Frame-Zusammensetzung, VLC-Dekoder (STR v2/v3), MDEC (IDCT, YUV→RGB), XA-ADPCM-Filmton im SPU-Mixer. Ende-zu-Ende-Test mit selbst erzeugtem Disc-Image.
+- **2026-10-22:** Hall (SPU-Reverb) eingebaut: Hardware-Formel mit 22050 Hz, alle PsyQ-Presets, Arbeitsbereich im Sound-RAM. Test: Nachhall klingt über ca. 2 s ab, ohne Hall endet der Impuls sofort.

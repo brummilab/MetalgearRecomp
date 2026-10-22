@@ -4,7 +4,9 @@
  * game's streaming code) and a mixer feeding the host audio device.
  *
  * CD audio input: XA-ADPCM decoded by xa.c, resampled to 44.1 kHz here.
- * Not emulated yet: reverb, noise, pitch LFO.
+ * Reverb: the hardware algorithm (psx-spx "SPU Reverb Formula") running at
+ * 22050 Hz on a work area at the top of sound RAM, with the PsyQ presets.
+ * Not emulated yet: noise, pitch LFO.
  */
 #include "psx.h"
 
@@ -116,6 +118,9 @@ static int       irq_pending;
 static SpuIRQCallbackProc irq_callback;
 static double    sample_accum;
 
+static void reverb_tick(int32_t in_l, int32_t in_r, int32_t *out_l, int32_t *out_r);
+static uint32_t reverb_voices;
+
 /* CD (XA) audio input, already resampled to OUTPUT_RATE */
 #define XA_RING 65536
 static int16_t   xa_ring[XA_RING][2];
@@ -148,6 +153,9 @@ void psx_spu_xa_queue(const int16_t *lr, int frames, int rate)
         }
     }
 }
+
+/* frames of CD audio waiting to be mixed (for tests) */
+int psx_spu_xa_pending(void) { return (int)(xa_write - xa_read); }
 
 void psx_spu_xa_flush(void)
 {
@@ -334,7 +342,7 @@ static void mix(int frames)
     while (frames > 0) {
         n = frames > 1024 ? 1024 : frames;
         for (i = 0; i < n; i++) {
-            int32_t l = 0, r = 0;
+            int32_t l = 0, r = 0, rev_l = 0, rev_r = 0, out_l, out_r;
             int k;
             for (k = 0; k < NUM_VOICES; k++) {
                 Voice *v = &voices[k];
@@ -342,9 +350,19 @@ static void mix(int frames)
                 if (v->env_phase == ENV_OFF)
                     continue;
                 s = voice_sample(v);
-                l += (s * v->vol_l) >> 15;
-                r += (s * v->vol_r) >> 15;
+                {
+                    int32_t vl = (s * v->vol_l) >> 15, vr = (s * v->vol_r) >> 15;
+                    l += vl;
+                    r += vr;
+                    if (reverb_voices & (1u << k)) {
+                        rev_l += vl;
+                        rev_r += vr;
+                    }
+                }
             }
+            reverb_tick(rev_l, rev_r, &out_l, &out_r);
+            l += out_l;
+            r += out_r;
             if (xa_read != xa_write) {
                 if (cd_mix) {
                     l += (xa_ring[xa_read % XA_RING][0] * cd_vol_l) >> 15;
@@ -614,20 +632,236 @@ void SpuFree(unsigned long addr)
             blocks[i].used = 0;
 }
 
-/* ---- reverb, noise, LFO: state only (not mixed yet) ------------------------------------ */
+/* ---- reverb -------------------------------------------------------------------------- */
 
-static uint32_t reverb_voices;
+/* register order as at 0x1F801DC0 (psx-spx); addresses in units of 8 bytes */
+enum {
+    R_dAPF1, R_dAPF2, R_vIIR, R_vCOMB1, R_vCOMB2, R_vCOMB3, R_vCOMB4, R_vWALL,
+    R_vAPF1, R_vAPF2, R_mLSAME, R_mRSAME, R_mLCOMB1, R_mRCOMB1, R_mLCOMB2, R_mRCOMB2,
+    R_dLSAME, R_dRSAME, R_mLDIFF, R_mRDIFF, R_mLCOMB3, R_mRCOMB3, R_mLCOMB4, R_mRCOMB4,
+    R_dLDIFF, R_dRDIFF, R_mLAPF1, R_mRAPF1, R_mLAPF2, R_mRAPF2, R_vLIN, R_vRIN,
+};
 
-long SpuSetReverb(long on_off) { return on_off; }
-long SpuSetReverbModeParam(SpuReverbAttr *attr) { (void)attr; return 0; }
-long SpuSetReverbDepth(SpuReverbAttr *attr) { (void)attr; return 0; }
-long SpuReserveReverbWorkArea(long on_off)
+typedef struct { uint32_t size; uint16_t regs[32]; } ReverbPreset;
+
+/* PsyQ modes OFF, ROOM, STUDIO_A/B/C, HALL, SPACE, ECHO, DELAY, PIPE (psx-spx presets) */
+static const ReverbPreset presets[10] = {
+    { 0x10, { 0,0,0,0,0,0,0,0, 0,0,1,1,1,1,1,1, 0,0,1,1,1,1,1,1, 0,0,1,1,1,1,0,0 } },
+    { 0x26C0, { 0x007D,0x005B,0x6D80,0x54B8,0xBED0,0x0000,0x0000,0xBA80,
+                0x5800,0x5300,0x04D6,0x0333,0x03F0,0x0227,0x0374,0x01EF,
+                0x0334,0x01B5,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,
+                0x0000,0x0000,0x01B4,0x0136,0x00B8,0x005C,0x8000,0x8000 } },
+    { 0x1F40, { 0x0033,0x0025,0x70F0,0x4FA8,0xBCE0,0x4410,0xC0F0,0x9C00,
+                0x5280,0x4EC0,0x03E4,0x031B,0x03A4,0x02AF,0x0372,0x0266,
+                0x031C,0x025D,0x025C,0x018E,0x022F,0x0135,0x01D2,0x00B7,
+                0x018F,0x00B5,0x00B4,0x0080,0x004C,0x0026,0x8000,0x8000 } },
+    { 0x4840, { 0x00B1,0x007F,0x70F0,0x4FA8,0xBCE0,0x4510,0xBEF0,0xB4C0,
+                0x5280,0x4EC0,0x0904,0x076B,0x0824,0x065F,0x07A2,0x0616,
+                0x076C,0x05ED,0x05EC,0x042E,0x050F,0x0305,0x0462,0x02B7,
+                0x042F,0x0265,0x0264,0x01B2,0x0100,0x0080,0x8000,0x8000 } },
+    { 0x6FE0, { 0x00E3,0x00A9,0x6F60,0x4FA8,0xBCE0,0x4510,0xBEF0,0xA680,
+                0x5680,0x52C0,0x0DFB,0x0B58,0x0D09,0x0A3C,0x0BD9,0x0973,
+                0x0B59,0x08DA,0x08D9,0x05E9,0x07EC,0x04B0,0x06EF,0x03D2,
+                0x05EA,0x031D,0x031C,0x0238,0x0154,0x00AA,0x8000,0x8000 } },
+    { 0xADE0, { 0x01A5,0x0139,0x6000,0x5000,0x4C00,0xB800,0xBC00,0xC000,
+                0x6000,0x5C00,0x15BA,0x11BB,0x14C2,0x10BD,0x11BC,0x0DC1,
+                0x11C0,0x0DC3,0x0DC0,0x09C1,0x0BC4,0x07C1,0x0A00,0x06CD,
+                0x09C2,0x05C1,0x05C0,0x041A,0x0274,0x013A,0x8000,0x8000 } },
+    { 0xF6C0, { 0x033D,0x0231,0x7E00,0x5000,0xB400,0xB000,0x4C00,0xB000,
+                0x6000,0x5400,0x1ED6,0x1A31,0x1D14,0x183B,0x1BC2,0x16B2,
+                0x1A32,0x15EF,0x15EE,0x1055,0x1334,0x0F2D,0x11F6,0x0C5D,
+                0x1056,0x0AE1,0x0AE0,0x07A2,0x0464,0x0232,0x8000,0x8000 } },
+    { 0x18040, { 0x0001,0x0001,0x7FFF,0x7FFF,0x0000,0x0000,0x0000,0x8100,
+                 0x0000,0x0000,0x1FFF,0x0FFF,0x1005,0x0005,0x0000,0x0000,
+                 0x1005,0x0005,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,
+                 0x0000,0x0000,0x1004,0x1002,0x0004,0x0002,0x8000,0x8000 } },
+    { 0x18040, { 0x0001,0x0001,0x7FFF,0x7FFF,0x0000,0x0000,0x0000,0x0000,
+                 0x0000,0x0000,0x1FFF,0x0FFF,0x1005,0x0005,0x0000,0x0000,
+                 0x1005,0x0005,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,
+                 0x0000,0x0000,0x1004,0x1002,0x0004,0x0002,0x8000,0x8000 } },
+    { 0x3C00, { 0x0017,0x0013,0x70F0,0x4FA8,0xBCE0,0x4510,0xBEF0,0x8500,
+                0x5F80,0x54C0,0x0371,0x02AF,0x02E5,0x01DF,0x02B0,0x01D7,
+                0x0358,0x026A,0x01D6,0x011E,0x012D,0x00B1,0x011F,0x0059,
+                0x01A0,0x00E3,0x0058,0x0040,0x0028,0x0014,0x8000,0x8000 } },
+};
+
+static uint16_t rv[32];             /* current reverb registers */
+static uint32_t rv_esa = SPU_RAM_SIZE - 0x10;   /* work area start (bytes) */
+static uint32_t rv_cur = SPU_RAM_SIZE - 0x10;   /* buffer address (bytes) */
+static int16_t  rv_vol_l, rv_vol_r;            /* depth = EVOLL/EVOLR */
+static int      rv_enable;                     /* master enable (writes) */
+static int      rv_reserved;
+static long     rv_mode;
+static int      rv_phase;                      /* 22050 Hz = every 2nd sample */
+static int32_t  rv_acc_l, rv_acc_r, rv_out_l, rv_out_r;
+
+static int32_t sat16(int32_t v) { return v < -32768 ? -32768 : v > 32767 ? 32767 : v; }
+
+/* byte address of reverb register r (offset in 8-byte units) + delta bytes */
+static uint32_t rv_addr(int reg, int32_t delta)
 {
-    /* the work area sits at the top of sound RAM */
-    heap_end = on_off ? SPU_RAM_SIZE - 0x10000 : SPU_RAM_SIZE;
+    uint32_t span = SPU_RAM_SIZE - rv_esa;
+    int64_t a = (int64_t)rv_cur - rv_esa + (int64_t)rv[reg] * 8 + delta;
+    if (span == 0)
+        return rv_esa;
+    a %= span;
+    if (a < 0)
+        a += span;
+    return rv_esa + (uint32_t)a;
+}
+
+static int32_t rv_read(int reg, int32_t delta)
+{
+    uint32_t a = rv_addr(reg, delta);
+    return (int16_t)(spu_ram[a] | (spu_ram[a + 1] << 8));
+}
+
+static void rv_write(int reg, int32_t v)
+{
+    uint32_t a = rv_addr(reg, 0);
+    v = sat16(v);
+    if (!rv_enable)
+        return;
+    spu_ram[a] = (uint8_t)v;
+    spu_ram[a + 1] = (uint8_t)(v >> 8);
+}
+
+#define VOL(r) ((int32_t)(int16_t)rv[r])
+#define MUL(a, b) (((int32_t)(a) * (int32_t)(b)) >> 15)
+
+static void reverb_step(int32_t in_l, int32_t in_r)
+{
+    int32_t lin = MUL(VOL(R_vLIN), in_l), rin = MUL(VOL(R_vRIN), in_r);
+    int32_t wall = VOL(R_vWALL), iir = VOL(R_vIIR);
+    int32_t lout, rout, t;
+    int32_t dapf1 = (int32_t)rv[R_dAPF1] * 8, dapf2 = (int32_t)rv[R_dAPF2] * 8;
+    int32_t old;
+
+    /* same side reflection */
+    old = rv_read(R_mLSAME, -2);
+    rv_write(R_mLSAME, MUL(sat16(lin + MUL(rv_read(R_dLSAME, 0), wall) - old), iir) + old);
+    old = rv_read(R_mRSAME, -2);
+    rv_write(R_mRSAME, MUL(sat16(rin + MUL(rv_read(R_dRSAME, 0), wall) - old), iir) + old);
+    /* different side reflection */
+    old = rv_read(R_mLDIFF, -2);
+    rv_write(R_mLDIFF, MUL(sat16(lin + MUL(rv_read(R_dRDIFF, 0), wall) - old), iir) + old);
+    old = rv_read(R_mRDIFF, -2);
+    rv_write(R_mRDIFF, MUL(sat16(rin + MUL(rv_read(R_dLDIFF, 0), wall) - old), iir) + old);
+
+    /* early echo (comb filter) */
+    lout = MUL(VOL(R_vCOMB1), rv_read(R_mLCOMB1, 0)) + MUL(VOL(R_vCOMB2), rv_read(R_mLCOMB2, 0))
+         + MUL(VOL(R_vCOMB3), rv_read(R_mLCOMB3, 0)) + MUL(VOL(R_vCOMB4), rv_read(R_mLCOMB4, 0));
+    rout = MUL(VOL(R_vCOMB1), rv_read(R_mRCOMB1, 0)) + MUL(VOL(R_vCOMB2), rv_read(R_mRCOMB2, 0))
+         + MUL(VOL(R_vCOMB3), rv_read(R_mRCOMB3, 0)) + MUL(VOL(R_vCOMB4), rv_read(R_mRCOMB4, 0));
+
+    /* late reverb: all pass filters 1 and 2 */
+    t = rv_read(R_mLAPF1, -dapf1);
+    lout = sat16(lout - MUL(VOL(R_vAPF1), t));
+    rv_write(R_mLAPF1, lout);
+    lout = sat16(MUL(lout, VOL(R_vAPF1)) + t);
+    t = rv_read(R_mRAPF1, -dapf1);
+    rout = sat16(rout - MUL(VOL(R_vAPF1), t));
+    rv_write(R_mRAPF1, rout);
+    rout = sat16(MUL(rout, VOL(R_vAPF1)) + t);
+
+    t = rv_read(R_mLAPF2, -dapf2);
+    lout = sat16(lout - MUL(VOL(R_vAPF2), t));
+    rv_write(R_mLAPF2, lout);
+    lout = sat16(MUL(lout, VOL(R_vAPF2)) + t);
+    t = rv_read(R_mRAPF2, -dapf2);
+    rout = sat16(rout - MUL(VOL(R_vAPF2), t));
+    rv_write(R_mRAPF2, rout);
+    rout = sat16(MUL(rout, VOL(R_vAPF2)) + t);
+
+    rv_out_l = MUL(lout, rv_vol_l);
+    rv_out_r = MUL(rout, rv_vol_r);
+
+    rv_cur = (rv_cur + 2) & (SPU_RAM_SIZE - 2);
+    if (rv_cur < rv_esa)
+        rv_cur = rv_esa;
+}
+
+/* called per 44.1 kHz output sample; the reverb unit runs at half the rate */
+static void reverb_tick(int32_t in_l, int32_t in_r, int32_t *out_l, int32_t *out_r)
+{
+    if (rv_mode == 0 && rv_vol_l == 0 && rv_vol_r == 0) {
+        *out_l = *out_r = 0;
+        return;
+    }
+    rv_acc_l += in_l;
+    rv_acc_r += in_r;
+    if (++rv_phase == 2) {
+        rv_phase = 0;
+        reverb_step(sat16(rv_acc_l / 2), sat16(rv_acc_r / 2));
+        rv_acc_l = rv_acc_r = 0;
+    }
+    *out_l = rv_out_l;
+    *out_r = rv_out_r;
+}
+
+long SpuSetReverb(long on_off)
+{
+    rv_enable = on_off != 0;
     return on_off;
 }
-long SpuClearReverbWorkArea(long mode) { (void)mode; return 0; }
+
+#define REV_MODE      (1 << 0)
+#define REV_DEPTHL    (1 << 1)
+#define REV_DEPTHR    (1 << 2)
+#define REV_CLEAR_WA  0x100
+
+static void clear_work_area(void)
+{
+    memset(&spu_ram[rv_esa], 0, SPU_RAM_SIZE - rv_esa);
+}
+
+long SpuSetReverbModeParam(SpuReverbAttr *attr)
+{
+    long mode;
+    uint32_t esa;
+
+    if (attr->mask != 0 && !(attr->mask & REV_MODE))
+        return 0;   /* delay/feedback only matter for ECHO/DELAY: not used by MGS */
+    mode = attr->mode & 0xFF;
+    if (mode < 0 || mode >= 10)
+        return 1;
+    esa = SPU_RAM_SIZE - presets[mode].size;
+    if (rv_reserved && heap_top > esa)
+        return 1;   /* "SPU Reverb Buffer Over" */
+    rv_mode = mode;
+    memcpy(rv, presets[mode].regs, sizeof(rv));
+    rv_esa = rv_cur = esa;
+    if (rv_reserved)
+        heap_end = esa;
+    if (attr->mode & REV_CLEAR_WA)
+        clear_work_area();
+    return 0;
+}
+
+long SpuSetReverbDepth(SpuReverbAttr *attr)
+{
+    if (attr->mask == 0 || (attr->mask & REV_DEPTHL))
+        rv_vol_l = attr->depth.left;
+    if (attr->mask == 0 || (attr->mask & REV_DEPTHR))
+        rv_vol_r = attr->depth.right;
+    return 0;
+}
+
+long SpuReserveReverbWorkArea(long on_off)
+{
+    /* the work area of the current mode sits at the top of sound RAM;
+     * SpuSetReverbModeParam() moves the boundary when the mode changes */
+    rv_reserved = on_off != 0;
+    heap_end = rv_reserved ? rv_esa : SPU_RAM_SIZE;
+    return on_off;
+}
+
+long SpuClearReverbWorkArea(long mode)
+{
+    if (mode >= 0 && mode < 10)
+        memset(&spu_ram[SPU_RAM_SIZE - presets[mode].size], 0, presets[mode].size);
+    return 0;
+}
 
 unsigned long SpuSetReverbVoice(long on_off, unsigned long voice_bit)
 {

@@ -36,7 +36,15 @@ uint64_t plat_ticks_us(void) { return 0; }
 void plat_sleep_us(uint64_t us) { (void)us; }
 void plat_present(const uint16_t *v, int x, int y, int w, int h, int r, int e) { (void)v; (void)x; (void)y; (void)w; (void)h; (void)r; (void)e; }
 int  plat_pump_events(void) { return 1; }
-void plat_audio_queue(const int16_t *s, int f) { (void)s; (void)f; }
+/* audio output: peak level of everything mixed since the last reset */
+static int audio_peak;
+void plat_audio_queue(const int16_t *s, int f)
+{
+    int i;
+    for (i = 0; i < f * 2; i++)
+        if (abs(s[i]) > audio_peak)
+            audio_peak = abs(s[i]);
+}
 int  plat_audio_queued_frames(void) { return 0; }
 void psx_log(const char *fmt, ...) { (void)fmt; }
 void psx_fatal(const char *fmt, ...) { (void)fmt; }
@@ -47,10 +55,9 @@ uint32_t psx_vblank_count(void) { return fake_vblank; }
 void psx_cd_interrupt(void);
 void psx_idle(void) { fake_vblank++; psx_cd_interrupt(); }
 
-/* captures what the XA decoder sends to the SPU */
-static int xa_frames, xa_rate;
-void psx_spu_xa_queue(const int16_t *lr, int frames, int rate) { (void)lr; xa_frames += frames; xa_rate = rate; }
-void psx_spu_xa_flush(void) {}
+int psx_spu_xa_pending(void);
+void psx_spu_init(void);
+void psx_spu_vblank(void);
 
 static int failures;
 
@@ -282,8 +289,97 @@ static void test_movie(void)
 
     for (tries = 0; tries < 10; tries++)
         psx_idle();
-    CHECK(xa_frames == 18 * 4 * 28 && xa_rate == 37800, "XA decoded %d frames at %d Hz (want 2016 at 37800)", xa_frames, xa_rate);
+    /* one stereo 37.8 kHz sector = 2016 frames = 2352 frames at 44.1 kHz */
+    CHECK(abs(psx_spu_xa_pending() - 2352) <= 2, "XA queued %d frames (want ~2352)", psx_spu_xa_pending());
     remove(path);
+}
+
+/* ---- SPU reverb ---------------------------------------------------------------------- */
+
+typedef struct { short left, right; } SpuVol;
+typedef struct {
+    u_long voice, mask; SpuVol volume, volmode, volumex;
+    u_short pitch, note, sample_note; short envx;
+    u_long addr, loop_addr; long a_mode, s_mode, r_mode;
+    u_short ar, dr, sr, rr, sl, adsr1, adsr2;
+} VoiceAttr;
+typedef struct { u_long mask; long mode; SpuVol depth; long delay, feedback; } RevAttr;
+typedef struct { SpuVol volume; long reverb, mix; } ExtAttr;
+typedef struct { u_long mask; SpuVol mvol, mvolmode, mvolx; ExtAttr cd, ext; } CommonAttr;
+
+unsigned long SpuSetTransferStartAddr(unsigned long addr);
+unsigned long SpuWrite(unsigned char *addr, unsigned long size);
+void SpuSetVoiceAttr(VoiceAttr *a);
+void SpuSetKey(long on_off, unsigned long voice_bit);
+void SpuSetCommonAttr(CommonAttr *a);
+long SpuSetReverb(long on_off);
+long SpuSetReverbModeParam(RevAttr *attr);
+long SpuSetReverbDepth(RevAttr *attr);
+long SpuReserveReverbWorkArea(long on_off);
+long SpuClearReverbWorkArea(long mode);
+unsigned long SpuSetReverbVoice(long on_off, unsigned long voice_bit);
+
+/* plays a 28-sample impulse; returns the peak level 1/6 to 1/2 s later */
+static int reverb_tail(int with_reverb)
+{
+    static unsigned char block[16];
+    VoiceAttr v;
+    RevAttr r;
+    CommonAttr c;
+    int i, tail = 0;
+
+    psx_spu_init();
+    memset(block, 0x77, sizeof(block));
+    block[0] = 0x00;     /* shift 0, filter 0 */
+    block[1] = 0x01;     /* end, no repeat: the voice stops after one block */
+    SpuSetTransferStartAddr(0x1010);
+    SpuWrite(block, 16);
+
+    memset(&c, 0, sizeof(c));
+    c.mask = 3;
+    c.mvol.left = c.mvol.right = 0x3FFF;
+    SpuSetCommonAttr(&c);
+
+    SpuReserveReverbWorkArea(1);
+    SpuClearReverbWorkArea(4);
+    memset(&r, 0, sizeof(r));
+    r.mask = 1;
+    r.mode = 4;          /* STUDIO_C, as MGS uses */
+    CHECK(SpuSetReverbModeParam(&r) == 0, "reverb mode rejected");
+    r.mask = 6;
+    r.depth.left = r.depth.right = 0x4000;
+    SpuSetReverbDepth(&r);
+    SpuSetReverb(1);
+    SpuSetReverbVoice(0, 0xFFFFFF);
+    if (with_reverb)
+        SpuSetReverbVoice(1, 1);
+
+    memset(&v, 0, sizeof(v));
+    v.voice = 1;
+    v.mask = (1 << 0) | (1 << 1) | (1 << 4) | (1 << 7) | (1 << 17) | (1 << 18);
+    v.volume.left = v.volume.right = 0x3FFF;
+    v.pitch = 0x1000;
+    v.addr = 0x1010;
+    v.adsr1 = 0x000F;    /* fastest attack, full sustain */
+    v.adsr2 = 0x0000;
+    SpuSetVoiceAttr(&v);
+    SpuSetKey(1, 1);
+
+    for (i = 0; i < 30; i++) {
+        audio_peak = 0;
+        psx_spu_vblank();
+        if (i >= 10 && audio_peak > tail)
+            tail = audio_peak;
+    }
+    SpuSetReverb(0);
+    return tail;
+}
+
+static void test_reverb(void)
+{
+    int dry = reverb_tail(0), wet = reverb_tail(1);
+    CHECK(dry == 0, "without reverb the impulse should be over (peak %d)", dry);
+    CHECK(wet > 50, "reverb tail missing (peak %d)", wet);
 }
 
 static void write_ppm(const char *path)
@@ -307,6 +403,7 @@ int main(int argc, char **argv)
     test_gte();
     test_gpu();
     test_movie();
+    test_reverb();
     if (argc > 1)
         write_ppm(argv[1]);
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "all tests passed", failures, failures == 1 ? "" : "s");
