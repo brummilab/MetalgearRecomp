@@ -21,4 +21,19 @@ void         psx_gte_command(unsigned int cmd);
 #define GTE_WC(n, v) psx_gte_write_ctrl((n), (unsigned int)(v))
 #define GTE_OP(c)    psx_gte_command(c)
 
+/* runtime hooks used by the source fixups in tools/asm2c.py */
+extern char psx_ToT[];
+void psx_idle(void);
+void mgs_native_overlay_loaded(int id);
+
+/* PS1 BIOS file I/O (memory card) and PsyQ's 15-bit rand() */
+#define open   psx_open
+#define read   psx_read
+#define write  psx_write
+#define close  psx_close
+#define lseek  psx_lseek
+#define rand   psx_rand
+#define srand  psx_srand
+#define fprintf mgs_fprintf
+
 #endif /* MGS_NATIVE_H */
