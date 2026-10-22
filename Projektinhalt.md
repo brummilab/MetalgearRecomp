@@ -21,6 +21,8 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 | 2026-10-22 | Interrupts an sicheren Punkten statt echter Unterbrechung | Nativer Code ist nicht unterbrechbar; Task-Wechsel im Interrupt über nachgebildete Kernel-Tabellen |
 | 2026-10-22 | MDEC-Ausgabe synchron statt per DMA-Interrupt | Spiel-Callback wird sofort bedient; Folgeanforderungen aus dem Callback laufen in einer Schleife statt rekursiv |
 | 2026-10-22 | Englisch erzwingen (Standard), `--japanese` als Schalter | Integral hat englische Sprachausgabe; Spracheinstellung wird jedes Frame gesetzt, weil Spielstände/Optionsmenü sie überschreiben |
+| 2026-10-22 | Höhere Auflösung über zweiten, hochaufgelösten VRAM; Standard Faktor 2 | Original-VRAM bleibt maßgeblich (CPU-Zugriffe, Paletten); Faktor 2 passt sicher ins 30-fps-Budget |
+| 2026-10-22 | Breitbild per GTE-Projektion (×3/4) | Ohne Eingriff in Spielcode; HUD-Verzerrung als bekannte Einschränkung |
 | 2026-10-22 | Overlays fest eingebunden, je Overlay vorgelinkt mit lokalisierten Symbolen | Eine einzige Programmdatei, keine DLL-/dlopen-Probleme, keine Symbolkonflikte zwischen Overlays |
 
 ## Technik
@@ -59,7 +61,8 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - [x] SPU-Reverb (Hall)
 - [ ] Titelbildschirm (Overlay `title`) – wartet auf Upstream; bis dahin Start im Stage-Select
 - [ ] Fehlende Stages upstream: brf, camera, change, d18a(r), rank, s03d, s07b(r), s08b(r), s11d, s11g, s14e, s15c, s19b(r), title
-- [ ] Optional: Hochauflösendes Rendering, Breitbild, 60-fps-Optionen
+- [x] Hochauflösendes Rendering (2×/4×) und Breitbild (GTE-Hack)
+- [ ] Optional: HUD im Breitbild unverzerrt, Subpixel-Präzision (PGXP), Multithread-Rasterizer, 60 fps
 - [ ] Optional: Windows-Build nativ unter Windows (MSYS2) einmal real testen
 - [ ] Fork von `mgs_reversing` für eigene Pull Requests anlegen
 
@@ -70,3 +73,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-22:** Filmwiedergabe eingebaut: CD-Streaming mit echter Laufwerksrate, STR-Frame-Zusammensetzung, VLC-Dekoder (STR v2/v3), MDEC (IDCT, YUV→RGB), XA-ADPCM-Filmton im SPU-Mixer. Ende-zu-Ende-Test mit selbst erzeugtem Disc-Image.
 - **2026-10-22:** Hall (SPU-Reverb) eingebaut: Hardware-Formel mit 22050 Hz, alle PsyQ-Presets, Arbeitsbereich im Sound-RAM. Test: Nachhall klingt über ca. 2 s ab, ohne Hall endet der Impuls sofort.
 - **2026-10-22:** Englisch erzwingen eingebaut (`GM_CONFIG_ENGLISH` jedes Frame, Schalter `--japanese`), im laufenden Spiel per Debugger geprüft. Compiler-Warnungen bereinigt.
+- **2026-10-22:** Höhere Auflösung (1×/2×/4×) und Breitbild eingebaut; Rasterizer auf Spannen mit inkrementellen Gradienten umgestellt. Tests: Hochauflösung stimmt mit Originalpixeln überein, Breitbild-Projektion, Leistungsmessung.

@@ -12,7 +12,8 @@ static SDL_Renderer *renderer;
 static SDL_Texture  *texture;
 static SDL_AudioDeviceID audio;
 static SDL_GameController *pad;
-static uint32_t      frame[640 * 512];
+static uint32_t     *frame;          /* (640 << shift) x (512 << shift) */
+static int           frame_shift;    /* log2 of the render scale */
 static uint16_t      buttons;
 
 extern uint8_t psx_pad_axes[2][4];
@@ -45,7 +46,7 @@ static const struct { SDL_GameControllerButton b; uint16_t bit; } padmap[] = {
     { SDL_CONTROLLER_BUTTON_LEFTSTICK, B_L3 }, { SDL_CONTROLLER_BUTTON_RIGHTSTICK, B_R3 },
 };
 
-int plat_init(int scale, int fullscreen)
+int plat_init(int scale, int fullscreen, int render_scale, int widescreen)
 {
     SDL_AudioSpec want, have;
 
@@ -55,7 +56,7 @@ int plat_init(int scale, int fullscreen)
         return -1;
     }
     window = SDL_CreateWindow("Metal Gear Solid", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                              320 * scale, 240 * scale,
+                              (widescreen ? 427 : 320) * scale, 240 * scale,
                               SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!window) {
         psx_log("SDL_CreateWindow: %s\n", SDL_GetError());
@@ -66,8 +67,16 @@ int plat_init(int scale, int fullscreen)
         psx_log("SDL_CreateRenderer: %s\n", SDL_GetError());
         return -1;
     }
-    SDL_RenderSetLogicalSize(renderer, 640, 480);
-    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 512);
+    /* 4:3, or 16:9 with the horizontally squeezed widescreen projection */
+    SDL_RenderSetLogicalSize(renderer, widescreen ? 1920 : 1440, 1080);
+    frame_shift = render_scale >= 4 ? 2 : render_scale >= 2 ? 1 : 0;
+    frame = (uint32_t *)calloc((size_t)(640 << frame_shift) * (512 << frame_shift), 4);
+    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+                                640 << frame_shift, 512 << frame_shift);
+    if (!frame || !texture) {
+        psx_log("cannot create the frame buffer\n");
+        return -1;
+    }
 
     SDL_zero(want);
     want.freq = 44100;
@@ -169,39 +178,48 @@ static uint32_t rgb555_to_argb(uint16_t c)
     return 0xFF000000u | (r << 16) | (g << 8) | b;
 }
 
-void plat_present(const uint16_t *vram, int x, int y, int w, int h, int rgb24, int enabled)
+/*
+ * vram/stride/shift describe the GPU's display VRAM (possibly upscaled by
+ * 1 << shift); x, y, w, h are the display area in original GPU pixels.
+ */
+void plat_present(const uint16_t *vram, int stride, int shift, int x, int y, int w, int h,
+                  int rgb24, int enabled)
 {
-    int i, j;
+    int i, j, fw = 640 << frame_shift, sw, sh, wmask = (1024 << shift) - 1, hmask = (512 << shift) - 1;
     SDL_Rect src;
 
     if (w <= 0 || h <= 0)
         return;
     if (w > 640) w = 640;
     if (h > 512) h = 512;
+    if (shift > frame_shift)
+        shift = frame_shift;
+    sw = w << shift;
+    sh = h << shift;
 
-    for (j = 0; j < h; j++) {
-        const uint16_t *row = &vram[((y + j) & 511) * 1024];
-        uint32_t *out = &frame[j * 640];
+    for (j = 0; j < sh; j++) {
+        const uint16_t *row = &vram[(((y << shift) + j) & hmask) * stride];
+        uint32_t *out = &frame[j * fw];
         if (!enabled) {
-            memset(out, 0, (size_t)w * 4);
+            memset(out, 0, (size_t)sw * 4);
         } else if (rgb24) {
-            /* 24-bit mode (movies): 3 bytes per pixel packed into VRAM */
+            /* 24-bit mode: 3 bytes per pixel packed into (unscaled) VRAM */
             const uint8_t *bytes = (const uint8_t *)row;
-            for (i = 0; i < w; i++) {
+            for (i = 0; i < sw; i++) {
                 int o = x * 2 + i * 3;
                 out[i] = 0xFF000000u | ((uint32_t)bytes[(o) & 2047] << 16)
                        | ((uint32_t)bytes[(o + 1) & 2047] << 8) | bytes[(o + 2) & 2047];
             }
         } else {
-            for (i = 0; i < w; i++)
-                out[i] = rgb555_to_argb(row[(x + i) & 1023]);
+            for (i = 0; i < sw; i++)
+                out[i] = rgb555_to_argb(row[((x << shift) + i) & wmask]);
         }
     }
-    SDL_UpdateTexture(texture, NULL, frame, 640 * 4);
+    SDL_UpdateTexture(texture, NULL, frame, fw * 4);
     src.x = 0;
     src.y = 0;
-    src.w = w;
-    src.h = h;
+    src.w = sw;
+    src.h = sh;
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, &src, NULL);
     SDL_RenderPresent(renderer);

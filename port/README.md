@@ -21,12 +21,35 @@ werden durch eine eigene Laufzeitschicht ersetzt.
 | Spielablauf mit Disc-Image | ⚠️ noch nicht getestet (kein Disc-Image verfügbar) |
 | Titelbildschirm | ⏳ Overlay `title` upstream noch nicht dekompiliert → Start im Debug-Stage-Select (`select1`), wie upstreams `dev_exe` |
 | Stages | 62 Overlays nativ; 18 (z. B. `s07b`, `s08b`, `s11d`, `s11g`, `s14e`, `s19b`) fehlen noch upstream |
-| Grafik | ✔️ Software-GPU (alle GP0-Befehle, Halbtransparenz, Dithering, Maskenbit) |
+| Grafik | ✔️ Software-GPU (alle GP0-Befehle, Halbtransparenz, Dithering, Maskenbit), interne Auflösung 1×/2×/4×, Breitbild 16:9 |
 | 3D-Mathematik | ✔️ GTE-Emulation nach Hardware-Spezifikation |
 | Sound | ✔️ SPU mit 24 ADPCM-Stimmen, ADSR, Hall (Reverb nach Hardware-Formel, alle PsyQ-Presets), XA-Audio (Filmton) |
 | Filmsequenzen (STR/MDEC) | ✔️ CD-Streaming in Echtzeit, VLC-Dekoder (STR v2/v3), MDEC, XA-Ton; mit Testdaten geprüft, mit echten Filmen noch nicht |
 | Speicherstände | ✔️ Memory-Card-Image `memcard1.mcd` (Standardformat, emulatorkompatibel) |
 | Eingabe | ✔️ Tastatur und Gamepads (SDL GameController, analog) |
+
+### Auflösung und Breitbild
+
+**Höhere Auflösung** (`--render-scale 2|4`): Neben dem originalen VRAM gibt es
+eine hochaufgelöste Kopie. Jedes Primitiv wird in beide gezeichnet. Der
+originale VRAM bleibt maßgeblich für CPU-Zugriffe, Paletten und indizierte
+Texturen, die Kopie wird angezeigt. 15-Bit-Texturen werden aus der Kopie
+gelesen, so bleiben Render-to-Texture-Effekte scharf. Das Verfahren ähnelt dem
+guter PS1-Emulatoren. Grenzen: Die 3D-Koordinaten bleiben ganzzahlig (kein
+Subpixel-„PGXP“), Linien werden als Blöcke vergrößert.
+
+Rechenzeit (Software-Rendering, pessimistische Testszene, 1 CPU-Kern):
+Faktor 1 ≈ 3 ms, Faktor 2 ≈ 16 ms, Faktor 4 ≈ 33 ms pro Frame. MGS läuft
+meist mit 30 fps (33 ms Budget). Faktor 4 braucht deshalb eine schnelle CPU.
+
+**Breitbild** (`--widescreen`): Der GTE-Breitbild-Hack staucht die
+3D-Projektion horizontal auf 3/4, und das Bild wird auf 16:9 gestreckt. Die
+3D-Welt erscheint unverzerrt mit etwa 33 % mehr Sichtfeld. Bekannte
+Nebenwirkungen, wie bei allen Breitbild-Hacks für PS1-Spiele:
+- 2D-Elemente (HUD, Menüs, Texte, Funk-Bildschirm) und Filme werden in die
+  Breite gezogen.
+- Objekte am Bildrand können später auftauchen, weil das Spiel nach seinem
+  4:3-Sichtfeld aussortiert.
 
 ### Sprache
 
@@ -85,6 +108,8 @@ build\windows\mgs.exe --iso "MGS Integral Disc 1.bin"
 | `--scale N` | Fenstergröße (Standard 3 = 960×720) |
 | `--fullscreen` | Vollbild (F11 schaltet um) |
 | `--japanese` | Spracheinstellung des Spiels unverändert lassen (Standard: Englisch erzwungen) |
+| `--render-scale N` | interne Auflösung: 1 = Original 320×240, 2 = 640×480 (Standard), 4 = 1280×960 |
+| `--widescreen` | 16:9 mit breiterem 3D-Sichtfeld |
 
 **Tastatur:** Pfeiltasten = Steuerkreuz, X = ✕, C = ○, Z = □, V = △,
 A/S = L1/R1, Q/W = L2/R2, Enter = Start, Backspace = Select, Esc = Beenden.
