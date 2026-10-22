@@ -16,3 +16,7 @@ iso/
 # Lokale Arbeitsdateien
 work/
 *.log
+
+# Builds und Memory-Card-Images
+build/
+*.mcd

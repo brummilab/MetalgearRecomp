@@ -25,6 +25,7 @@ void         psx_gte_command(unsigned int cmd);
 extern char psx_ToT[];
 void psx_idle(void);
 void mgs_native_overlay_loaded(int id);
+int  mgs_native_overlay_available(const char *name);
 
 /* PS1 BIOS file I/O (memory card) and PsyQ's 15-bit rand() */
 #define open   psx_open

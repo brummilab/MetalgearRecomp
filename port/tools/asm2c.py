@@ -53,6 +53,10 @@ FIXUPS = [
      'static char s00a_str0[] = "RATION";\nstatic char s00a_str1[] = "SOCOM/BULLET * 12";\n'
      'static char s00a_str2[] = "FA-MAS/BULLET * 25";\n'
      'char *s00a_off_800C33F4[3] = { s00a_str0, s00a_str1, s00a_str2 };'),
+    # the title screen overlay is not decompiled yet: like upstream's dev
+    # variant, start in the debug stage select instead (until it is)
+    ('game/loader.c', r'#ifdef DEV_EXE\n(\s*)// force load some overlay in dev variant\n(\s*)if \(strcmp\(dir, "title"\) == 0\)',
+     r'#if defined(DEV_EXE) || defined(MGS_NATIVE)\n\1// force load some overlay in dev variant\n\2if (strcmp(dir, "title") == 0 && !mgs_native_overlay_available("title"))'),
     # swap in the native chara table once a stage binary was loaded
     ('game/gamed.c', r'memcpy\(StageCharacterEntries, buf, gOverlayBinSize_800B5290\);',
      'memcpy(StageCharacterEntries, buf, gOverlayBinSize_800B5290);\n    mgs_native_overlay_loaded(id);'),
