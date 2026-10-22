@@ -12,7 +12,7 @@ zurückübersetzt, der bitgenau das Original ergibt:
 | --- | --- |
 | `SLPM_862.47` / `SLPM_862.48` – Hauptprogramm Disc 1/2 | ✔️ 100 % dekompiliert, matching |
 | `SLPM_862.49` – Hauptprogramm VR-Disc | ✔️ 100 % dekompiliert, matching |
-| Stage-Overlays | 🚧 62 vollständig, 18 noch in Arbeit (u. a. `title`) |
+| Stage-Overlays | 🚧 62 vollständig, 18 noch in Arbeit (u. a. `title`); im PC-Port 16 davon recompiliert |
 | VR-Overlays (`vr_*`, `vab_*`, …) | ❌ größtenteils offen |
 
 Dieses Repo ergänzt das um:
@@ -22,6 +22,9 @@ Dieses Repo ergänzt das um:
    GTE-Emulation, SPU, CD aus Disc-Image, Filmwiedergabe mit MDEC und
    XA-Audio, Memory Card, Controller über SDL2).
    Läuft unter Windows und Linux als 32-Bit-Programm.
+   Overlays, die upstream noch nicht fertig sind (z. B. das Briefing `brf`
+   und der Titelbildschirm), übersetzt ein **statischer Recompiler** aus dem
+   eigenen PS1-Build nach C (siehe [`port/README.md`](port/README.md#recompilierte-overlays-z-b-brf-das-briefing)).
 2. **Matching-Build** der PS1-Version unter Linux/WSL (Wine), inklusive
    Hash-Prüfung gegen das Original.
 

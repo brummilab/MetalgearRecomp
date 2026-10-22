@@ -8,8 +8,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* map size bytes of zeroed read/write memory exactly at addr */
-void *os_map_fixed(uint32_t addr, uint32_t size);
+/* map size bytes of zeroed read/write memory exactly at addr; exec also
+ * allows running code there (thunks of recompiled overlays) */
+void *os_map_fixed(uint32_t addr, uint32_t size, int exec);
+/* make [addr, addr + size) inaccessible (page aligned) */
+int   os_protect_none(uint32_t addr, uint32_t size);
 
 typedef struct os_fiber os_fiber;
 

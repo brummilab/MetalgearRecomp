@@ -10,10 +10,17 @@ struct os_fiber {
     void (*entry)(void);
 };
 
-void *os_map_fixed(uint32_t addr, uint32_t size)
+void *os_map_fixed(uint32_t addr, uint32_t size, int exec)
 {
-    void *p = VirtualAlloc((void *)(uintptr_t)addr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    void *p = VirtualAlloc((void *)(uintptr_t)addr, size, MEM_RESERVE | MEM_COMMIT,
+                           exec ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE);
     return p == (void *)(uintptr_t)addr ? p : NULL;
+}
+
+int os_protect_none(uint32_t addr, uint32_t size)
+{
+    DWORD old;
+    return VirtualProtect((void *)(uintptr_t)addr, size, PAGE_NOACCESS, &old) ? 0 : -1;
 }
 
 static void CALLBACK fiber_start(LPVOID arg)
@@ -67,13 +74,18 @@ struct os_fiber {
     void      *stack;
 };
 
-void *os_map_fixed(uint32_t addr, uint32_t size)
+void *os_map_fixed(uint32_t addr, uint32_t size, int exec)
 {
-    void *p = mmap((void *)(uintptr_t)addr, size, PROT_READ | PROT_WRITE,
+    void *p = mmap((void *)(uintptr_t)addr, size, PROT_READ | PROT_WRITE | (exec ? PROT_EXEC : 0),
                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
     if (p == MAP_FAILED || p != (void *)(uintptr_t)addr)
         return NULL;
     return p;
+}
+
+int os_protect_none(uint32_t addr, uint32_t size)
+{
+    return mprotect((void *)(uintptr_t)addr, size, PROT_NONE);
 }
 
 os_fiber *os_fiber_init_main(void)

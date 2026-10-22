@@ -19,8 +19,8 @@ werden durch eine eigene Laufzeitschicht ersetzt.
 | Build Windows (MinGW, 32 Bit) | ✔️ baut, linkt, Selbsttests grün (getestet unter Wine) |
 | Boot | ✔️ Taskscheduler, alle Systemtasks, Memory Card, Pad, Dateisystem starten |
 | Spielablauf mit Disc-Image | ⚠️ noch nicht getestet (kein Disc-Image verfügbar) |
-| Titelbildschirm | ⏳ Overlay `title` upstream noch nicht dekompiliert → Start im Debug-Stage-Select (`select1`), wie upstreams `dev_exe` |
-| Stages | 62 Overlays nativ; 18 (z. B. `s07b`, `s08b`, `s11d`, `s11g`, `s14e`, `s19b`) fehlen noch upstream |
+| Titelbildschirm | ✔️ Overlay `title` recompiliert (mit PS1-Build); ohne ihn Start im Debug-Stage-Select (`select1`) |
+| Stages | 62 Overlays nativ, 16 weitere recompiliert (u. a. `brf`, `s07b`, `s08b`, `s11d`, `s14e`, `s19b`); es fehlen `rank` (Hardware-Zugriffe) und `s07br` (kein PS1-Build-Ausgang) |
 | Grafik | ✔️ Software-GPU (alle GP0-Befehle, Halbtransparenz, Dithering, Maskenbit), interne Auflösung 1×/2×/4×, Breitbild 16:9 |
 | 3D-Mathematik | ✔️ GTE-Emulation nach Hardware-Spezifikation |
 | Sound | ✔️ SPU mit 24 ADPCM-Stimmen, ADSR, Hall (Reverb nach Hardware-Formel, alle PsyQ-Presets), XA-Audio (Filmton) |
@@ -181,7 +181,9 @@ port/
 │   ├── gen_sources.py      Quellenlisten aus upstreams Linker-Template
 │   ├── asm2c.py            GTE-Inline-Assembler -> C, wenige Quell-Fixups
 │   ├── link_overlay.py     Overlays vorlinken, Symbole lokalisieren
-│   └── gen_overlay_table.py
+│   ├── gen_overlay_table.py
+│   ├── recomp.py           statischer MIPS→C-Recompiler für Overlays
+│   └── native_syms.py      Symbollisten des nativen Programms für recomp.py
 ├── src/
 │   ├── main.c              Einstieg, Kommandozeile
 │   ├── platform_sdl.c      Fenster, Eingabe, Audio
@@ -196,8 +198,10 @@ port/
 │       ├── card.c          Memory Card + „bu00:“-Dateisystem
 │       ├── mdec.c          Filme: VLC-Dekoder + MDEC (IDCT, YUV→RGB)
 │       ├── xa.c            XA-ADPCM-Audio (Filmton)
+│       ├── recomp_rt.c     Laufzeit recompilierter Overlays (Thunks, Relokation)
 │       └── os.c            Windows/POSIX-Spezifisches
-└── tests/test_runtime.c    Selbsttests GTE/GPU/Filmkette (ohne Spieldaten)
+├── tests/test_runtime.c    Selbsttests GTE/GPU/Filmkette (ohne Spieldaten)
+└── tests/test_recomp.c     Recompiler gegen Compiler (nur mit PS1-Build)
 ```
 
 **Das Upstream-Repo bleibt unverändert.** Der Build legt eine übersetzte Kopie
@@ -233,6 +237,46 @@ nach. Nativ werden alle vollständig dekompilierten Overlays fest eingebunden.
 Jedes wird vorher einzeln vorgelinkt, und seine Symbole werden lokalisiert.
 Lädt das Spiel ein Overlay von der Disc, ersetzt `mgs_native_overlay_loaded()`
 die MIPS-Charaktertabelle durch die native.
+
+### Recompilierte Overlays (z. B. `brf`, das Briefing)
+
+18 Overlays sind upstream noch nicht fertig dekompiliert. Statt auf upstream zu
+warten, übersetzt `tools/recomp.py` sie **statisch aus dem Original-Maschinencode
+nach C**. Der Maschinencode stammt aus dem eigenen PS1-Matching-Build
+(`scripts/build.sh`, legt `upstream/mgs_reversing/obj/<overlay>.bin` an), also
+nicht von der Disc und nicht aus dem Netz. Ohne PS1-Build fehlen diese Overlays
+einfach wie bisher.
+
+- **Übersetzung:** Jede MIPS-Funktion wird eine C-Funktion auf nachgebildeten
+  Registern. Der Stackrahmen liegt in einem lokalen Array. Übersetzt werden
+  Delay-Slots, Sprungtabellen, HI/LO, unausgerichtete Zugriffe (`lwl/lwr`)
+  und GTE-Befehle. Funktionen und Einsprünge findet der Recompiler über die
+  Linker-Map, `jal`-Ziele, `lui/addiu`-Konstanten und Datenwörter.
+- **Anbindung an den nativen Code:** Eine Datenflussanalyse verfolgt
+  `%hi/%lo`-Paare und `$gp`. Adressen von Symbolen des Hauptprogramms werden auf
+  die nativen Symbole umgerechnet, Aufrufe gehen direkt an die nativen
+  Funktionen. Mit statisch eingelinkten PsyQ-Funktionen (MDEC, CD-Streaming, …)
+  ruft das Overlay die Laufzeitschicht auf.
+- **Laden:** Das Spiel lädt das Overlay wie auf der Konsole nach `0x800C3208`.
+  `psx_recomp_install()` schreibt dann an jeden Einsprungpunkt einen kleinen
+  x86-Sprung (`mov eax, ziel; jmp eax`) zur recompilierten Funktion. So
+  funktionieren auch Funktionszeiger in Tabellen und Actor-Strukturen.
+  Datenwörter, die auf das Hauptprogramm zeigen, werden reloziert. Der
+  PS1-RAM ist dafür ausführbar eingeblendet. Der Bereich des alten
+  Hauptprogramms (`0x80000000–0x800C3000`) ist gesperrt, damit ein nicht
+  umgerechneter Zugriff sofort auffällt.
+- **Prüfung:** `test_recomp` übersetzt Funktionen des Hauptprogramms
+  (`GV_StrCode`, `GV_VecLen3`, `GV_VecDir2`, …) und vergleicht sie auf
+  Zufallseingaben mit den nativ kompilierten. Außerdem installiert es alle
+  recompilierten Overlays und ruft über einen Thunk auf. Ein absichtlich
+  eingebauter Fehler im recompilierten Code fällt dem Test auf.
+- **Ausnahme `rank`:** Dieses Overlay steuert Timer und Pad-Schnittstelle direkt
+  über Hardware-Register und bleibt deshalb vorerst aus
+  (`-DMGS_RECOMP_SKIP=rank`). `-DMGS_RECOMP_OVERLAYS=OFF` schaltet den
+  Recompiler ganz ab.
+
+Wird ein Overlay upstream fertig dekompiliert, übernimmt der Port automatisch
+die native Fassung. Dekompilierter Code hat immer Vorrang.
 
 ## Nächste Schritte
 

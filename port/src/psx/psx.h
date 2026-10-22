@@ -60,8 +60,12 @@ typedef struct { u_char r, g, b, cd; } CVECTOR;
 #define PSX_SPAD_BASE  0x1F800000u
 #define PSX_SPAD_SIZE  0x00010000u   /* 1 KiB used, one allocation granule */
 
-/* overlay load address returned by mts_get_bss_tail() (_bss_orgend) */
-#define PSX_OVERLAY_BASE 0x800B0000u
+/* overlay load address returned by mts_get_bss_tail() (_bss_orgend): the
+ * original address, so recompiled overlays find their data where it was */
+#define PSX_OVERLAY_BASE 0x800C3208u
+/* below it the original executable lived; unused natively and blocked so
+ * that untranslated accesses from recompiled code fault immediately */
+#define PSX_MAIN_GUARD_END 0x800C3000u
 
 int  psx_mem_init(void);
 
