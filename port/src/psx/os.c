@@ -5,9 +5,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 extern char __executable_start[] __attribute__((weak));
 extern char etext[] __attribute__((weak));
+extern char _end[] __attribute__((weak));
 
 /* return addresses on the stack: words pointing into the program's code */
 static void crash_backtrace(const uint32_t *sp, int words, uint32_t lo, uint32_t hi)
@@ -87,6 +89,23 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS *e)
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
+uint32_t os_image_data_end(void)
+{
+    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)GetModuleHandleA(NULL);
+    const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const char *)dos + dos->e_lfanew);
+    const IMAGE_SECTION_HEADER *sec = IMAGE_FIRST_SECTION(nt);
+    uint32_t end = 0;
+    int i;
+
+    for (i = 0; i < nt->FileHeader.NumberOfSections; i++) {
+        uint32_t e = (uint32_t)(uintptr_t)dos + sec[i].VirtualAddress + sec[i].Misc.VirtualSize;
+        if (strncmp((const char *)sec[i].Name, ".debug", 6) != 0 &&
+            strncmp((const char *)sec[i].Name, ".reloc", 6) != 0 && e > end)
+            end = e;
+    }
+    return end;
+}
+
 void os_install_crash_handler(void)
 {
     /* vectored: sees the fault first, also on fiber stacks and in threads
@@ -159,6 +178,11 @@ void *os_map_fixed(uint32_t addr, uint32_t size, int exec)
 int os_protect_none(uint32_t addr, uint32_t size)
 {
     return mprotect((void *)(uintptr_t)addr, size, PROT_NONE);
+}
+
+uint32_t os_image_data_end(void)
+{
+    return (uint32_t)(uintptr_t)_end;
 }
 
 static void crash_signal(int sig, siginfo_t *info, void *uc_)

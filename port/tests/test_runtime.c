@@ -25,7 +25,7 @@ void         psx_interp_init(int enable);
 void         psx_gpu_vblank(void);
 DISPENV     *PutDispEnv(DISPENV *env);
 long RotTransPers3(SVECTOR *v0, SVECTOR *v1, SVECTOR *v2, long *sxy0, long *sxy1, long *sxy2, long *p, long *flag);
-extern uint16_t psx_vram[];
+extern uint16_t *psx_vram;
 
 long RotTransPers(SVECTOR *v0, long *sxy, long *p, long *flag);
 void SetRotMatrix(MATRIX *m);

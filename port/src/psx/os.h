@@ -14,6 +14,9 @@ void *os_map_fixed(uint32_t addr, uint32_t size, int exec);
 /* make [addr, addr + size) inaccessible (page aligned) */
 int   os_protect_none(uint32_t addr, uint32_t size);
 
+/* end of the program's loaded data (address after its last data section) */
+uint32_t os_image_data_end(void);
+
 /* on a crash, log the exception, the faulting address and probable return
  * addresses (to map with addr2line/nm on the unstripped build) */
 void  os_install_crash_handler(void);

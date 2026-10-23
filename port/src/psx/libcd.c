@@ -277,7 +277,8 @@ typedef struct {
     uint8_t  data[STR_MAX_SECTORS * STR_PAYLOAD];
 } StrSlot;
 
-static StrSlot  slots[STR_SLOTS];
+static StrSlot *slots;
+PSX_HEAP_BUFFER(slots, STR_SLOTS * sizeof(StrSlot))
 static unsigned slot_seq;
 static long     stream_mode;
 static double   stream_budget;

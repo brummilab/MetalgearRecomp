@@ -28,7 +28,7 @@ typedef uint8_t  u8;
 #define VRAM_W 1024
 #define VRAM_H 512
 
-uint16_t psx_vram[VRAM_W * VRAM_H];
+uint16_t *psx_vram;     /* on the heap, see PSX_HEAP_BUFFER */
 
 #define PIX(x, y) psx_vram[((y) & (VRAM_H - 1)) * VRAM_W + ((x) & (VRAM_W - 1))]
 
@@ -40,8 +40,15 @@ typedef struct {
     int       wmask, hmask;
 } Target;
 
-static Target native = { psx_vram, 0, VRAM_W, VRAM_W - 1, VRAM_H - 1 };
+static Target native = { NULL, 0, VRAM_W, VRAM_W - 1, VRAM_H - 1 };
 static Target hires;            /* pix == NULL when the scale is 1 */
+
+__attribute__((constructor)) static void vram_alloc(void)
+{
+    if (!(psx_vram = calloc(VRAM_W * VRAM_H, sizeof(uint16_t))))
+        abort();
+    native.pix = psx_vram;
+}
 
 #define TPIX(t, x, y) (t)->pix[((y) & (t)->hmask) * (t)->stride + ((x) & (t)->wmask)]
 

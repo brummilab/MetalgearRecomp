@@ -228,7 +228,13 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
 - PS1-RAM (2 MB) liegt bei `0x80000000`, das Scratchpad bei `0x1F800000`,
   beide werden beim Start fest eingeblendet.
 - Das Programmabbild liegt bei `0x00400000` und muss unter 16 MB bleiben, damit
-  24-Bit-Verweise eindeutig dekodierbar sind (`psx_decode_addr24`).
+  24-Bit-Verweise eindeutig dekodierbar sind (`psx_decode_addr24`). Große
+  Puffer der Laufzeitschicht (VRAM, Sound-RAM, Film- und Memory-Card-Puffer)
+  liegen deshalb auf dem Heap (`PSX_HEAP_BUFFER`), und `psx_mem_init()` bricht
+  mit einer klaren Meldung ab, wenn die Programmdaten die Grenze überschreiten.
+- Bei einem Absturz schreibt das Programm `CRASH:`-Zeilen mit Adresse und
+  Aufrufkette ins Log (zuordnen mit `addr2line`/`nm` auf dem Build mit
+  Debug-Infos).
 - Unter Windows braucht das ein 64-Bit-Windows. Das Programm ist
   „large address aware“ gelinkt.
 
@@ -268,9 +274,9 @@ einfach wie bisher.
   x86-Sprung (`mov eax, ziel; jmp eax`) zur recompilierten Funktion. So
   funktionieren auch Funktionszeiger in Tabellen und Actor-Strukturen.
   Datenwörter, die auf das Hauptprogramm zeigen, werden reloziert. Der
-  PS1-RAM ist dafür ausführbar eingeblendet. Der Bereich des alten
-  Hauptprogramms (`0x80000000–0x800C3000`) ist gesperrt, damit ein nicht
-  umgerechneter Zugriff sofort auffällt.
+  PS1-RAM ist dafür ausführbar eingeblendet. Mit `--guard-mem` wird der
+  Bereich des alten Hauptprogramms (`0x80010000–0x800C3000`) gesperrt, damit
+  ein nicht umgerechneter Zugriff sofort auffällt (zur Fehlersuche).
 - **Prüfung:** `test_recomp` übersetzt Funktionen des Hauptprogramms
   (`GV_StrCode`, `GV_VecLen3`, `GV_VecDir2`, …) und vergleicht sie auf
   Zufallseingaben mit den nativ kompilierten. Außerdem installiert es alle

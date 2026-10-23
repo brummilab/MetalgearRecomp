@@ -94,7 +94,8 @@ static const AcCode ac_codes[] = {
 #define NUM_AC (sizeof(ac_codes) / sizeof(ac_codes[0]))
 
 /* lookup by the next 16 bits: code length (0 = invalid), run, level */
-static struct { uint8_t len, run, level; } ac_lut[1 << 16];
+static struct AcCode { uint8_t len, run, level; } *ac_lut;
+PSX_HEAP_BUFFER(ac_lut, (1 << 16) * sizeof(struct AcCode))
 static int ac_ready;
 
 static void ac_init(void)
@@ -343,7 +344,8 @@ idct:
 
 #define MAX_MACROBLOCKS (40 * 32)
 
-static uint16_t mb_pixels[MAX_MACROBLOCKS][256];  /* 15-bit */
+static uint16_t (*mb_pixels)[256];                /* 15-bit */
+PSX_HEAP_BUFFER(mb_pixels, MAX_MACROBLOCKS * 256 * sizeof(uint16_t))
 static int      mb_count;
 static int      mb_out;           /* next macroblock to hand out */
 static int      out_depth15 = 1;

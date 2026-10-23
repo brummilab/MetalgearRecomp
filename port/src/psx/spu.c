@@ -108,7 +108,8 @@ typedef struct {
     int32_t  env_counter;
 } Voice;
 
-static uint8_t   spu_ram[SPU_RAM_SIZE];
+static uint8_t  *spu_ram;
+PSX_HEAP_BUFFER(spu_ram, SPU_RAM_SIZE)
 static Voice     voices[NUM_VOICES];
 static int16_t   main_vol_l = 0x3FFF, main_vol_r = 0x3FFF;
 static uint32_t  transfer_addr;
@@ -123,7 +124,8 @@ static uint32_t reverb_voices;
 
 /* CD (XA) audio input, already resampled to OUTPUT_RATE */
 #define XA_RING 65536
-static int16_t   xa_ring[XA_RING][2];
+static int16_t (*xa_ring)[2];
+PSX_HEAP_BUFFER(xa_ring, XA_RING * 2 * sizeof(int16_t))
 static unsigned  xa_read, xa_write;
 static int16_t   cd_vol_l, cd_vol_r;
 static int       cd_mix;
@@ -423,7 +425,7 @@ static int16_t vol15(short v)
 
 void psx_spu_init(void)
 {
-    memset(spu_ram, 0, sizeof(spu_ram));
+    memset(spu_ram, 0, SPU_RAM_SIZE);
     memset(voices, 0, sizeof(voices));
 }
 
