@@ -347,8 +347,10 @@ static void stream_interrupt(void)
     if (now == last_vblank)
         return;
     stream_budget += (now - last_vblank) * rate / 59.94;
-    if (stream_budget > 30)
-        stream_budget = 30;
+    /* catch up after slow frames (movie decoding) for up to a second, like
+     * a drive that keeps reading; beyond that the data is lost anyway */
+    if (stream_budget > rate)
+        stream_budget = rate;
     last_vblank = now;
     while (stream_budget >= 1.0 && streaming) {
         stream_budget -= 1.0;
