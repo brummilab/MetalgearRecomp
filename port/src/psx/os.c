@@ -99,8 +99,9 @@ uint32_t os_image_data_end(void)
 
     for (i = 0; i < nt->FileHeader.NumberOfSections; i++) {
         uint32_t e = (uint32_t)(uintptr_t)dos + sec[i].VirtualAddress + sec[i].Misc.VirtualSize;
-        if (strncmp((const char *)sec[i].Name, ".debug", 6) != 0 &&
-            strncmp((const char *)sec[i].Name, ".reloc", 6) != 0 && e > end)
+        /* debug info and relocations are discardable (long section names
+         * like .debug_info appear as "/NN", so go by the flag) */
+        if (!(sec[i].Characteristics & IMAGE_SCN_MEM_DISCARDABLE) && e > end)
             end = e;
     }
     return end;

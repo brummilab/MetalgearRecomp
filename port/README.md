@@ -232,6 +232,12 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   Puffer der Laufzeitschicht (VRAM, Sound-RAM, Film- und Memory-Card-Puffer)
   liegen deshalb auf dem Heap (`PSX_HEAP_BUFFER`), und `psx_mem_init()` bricht
   mit einer klaren Meldung ab, wenn die Programmdaten die Grenze überschreiten.
+- Recompilierter Code bildet Zugriffe auf die ersten 64 KB (Null-Zeiger; auf
+  der PS1 der Anfang des RAMs) wie die Konsole auf das PS1-RAM ab, ohne
+  Verzweigung (`rc_ea`); Stapel- und bekannte Adressen gehen direkt. Er wird
+  mit `-Os` übersetzt, damit die Programmdaten unter 16 MB bleiben (derzeit
+  ~14,1 MB). Wird es knapp, gehört der recompilierte Code in ein eigenes Modul
+  oberhalb von 16 MB (Code muss nicht unter der Grenze liegen, nur Daten).
 - Bei einem Absturz schreibt das Programm `CRASH:`-Zeilen mit Adresse und
   Aufrufkette ins Log (zuordnen mit `addr2line`/`nm` auf dem Build mit
   Debug-Infos).
