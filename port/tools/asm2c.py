@@ -29,7 +29,28 @@ SP = 29
 # Small, targeted source fixups that the native build needs on top of the
 # asm translation: (path suffix, regex, replacement). Keep this list short -
 # real porting work belongs in port/src, not in rewritten upstream files.
+# Applied to every source where they match. The PS1 compiler evaluates
+# function arguments left to right; GCC on x86 may not (C leaves the order
+# unspecified). Calls whose arguments read the script (GCL_*) one after the
+# other are rewritten into statement expressions with that order fixed.
+GLOBAL_FIXUPS = [
+    # GCL_GetOption also moves the script read pointer (next_str_ptr)
+    (r"GM_ConfigControlString\(\s*(\w+)\s*,\s*GCL_GetOption\(\s*'p'\s*\)\s*,\s*GCL_GetOption\(\s*'d'\s*\)\s*\)",
+     r"({ char *gcl_p_ = GCL_GetOption('p'); char *gcl_d_ = GCL_GetOption('d'); "
+     r"GM_ConfigControlString(\1, gcl_p_, gcl_d_); })"),
+]
+
 FIXUPS = [
+    # script arguments read in order (see GLOBAL_FIXUPS)
+    ('game/script.c', r'MENU_RadioCall\(GCL_GetNextInt\(\),[^;]*?GCL_GetNextInt\(\),[^;]*?GCL_GetNextInt\(\)\);[^\n]*',
+     '({ int gcl_a_ = GCL_GetNextInt(); int gcl_b_ = GCL_GetNextInt(); int gcl_c_ = GCL_GetNextInt(); '
+     'MENU_RadioCall(gcl_a_, gcl_b_, gcl_c_); });'),
+    ('game/script.c', r'MENU_SetRadioMesg\(GCL_GetNextInt\(\),[^;]*?GCL_GetString\(GCL_NextStr\(\)\)\);[^\n]*',
+     '({ int gcl_a_ = GCL_GetNextInt(); char *gcl_s_ = GCL_GetString(GCL_NextStr()); '
+     'MENU_SetRadioMesg(gcl_a_, gcl_s_); });'),
+    ('game/alert.c', r'GM_SeSet2\(GCL_GetNextInt\(\),[^;]*?GCL_GetNextInt\(\),[^;]*?GCL_GetNextInt\(\)\);[^\n]*',
+     '({ int gcl_a_ = GCL_GetNextInt(); int gcl_b_ = GCL_GetNextInt(); int gcl_c_ = GCL_GetNextInt(); '
+     'GM_SeSet2(gcl_a_, gcl_b_, gcl_c_); });'),
     # PS1 section placement (.sbss/.bss) has no meaning natively and clashes
     # with initialized definitions on ELF/PE.
     ('include/mgstype.h', r'#define SECTION\(x\)\s+__attribute__\(\(section\(x\)\)\)', '#define SECTION(x)'),
@@ -431,6 +452,8 @@ def main():
                             raise
                 if not lenient:
                     text = drop_static_after_extern(text)
+                for pat, rep in GLOBAL_FIXUPS:
+                    text = re.sub(pat, rep, text, flags=re.M)
                 for suffix, pat, rep in FIXUPS:
                     if src.replace('\\', '/').endswith(suffix):
                         text, n = re.subn(pat, rep, text, flags=re.M)

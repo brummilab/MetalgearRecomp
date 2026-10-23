@@ -258,6 +258,9 @@ target_include_directories(test_runtime PRIVATE src)
 target_link_libraries(test_runtime PRIVATE m)
 enable_testing()
 add_test(NAME runtime COMMAND test_runtime)
+# argument evaluation order: no game call may depend on it (see asm2c.py)
+add_test(NAME evalorder COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_evalorder.py
+         ${GEN_DIR}/source)
 
 # The recompiler checked against the compiler: functions of the original
 # executable, recompiled from the PS1 build, must behave like their natively
