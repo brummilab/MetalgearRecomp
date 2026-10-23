@@ -10,6 +10,24 @@
 extern char __executable_start[] __attribute__((weak));
 extern char etext[] __attribute__((weak));
 extern char _end[] __attribute__((weak));
+extern int mts_active_task_800C0DB0 __attribute__((weak));   /* game's current task */
+
+/* registers, raw stack words and the game task, for crash reports */
+static void crash_context(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx, uint32_t esi,
+                          uint32_t edi, uint32_t ebp, const uint32_t *sp, int words)
+{
+    int i;
+    fprintf(stderr, "CRASH: eax %08X ebx %08X ecx %08X edx %08X esi %08X edi %08X ebp %08X esp %08X\n",
+            (unsigned)eax, (unsigned)ebx, (unsigned)ecx, (unsigned)edx, (unsigned)esi, (unsigned)edi,
+            (unsigned)ebp, (unsigned)(uintptr_t)sp);
+    if (&mts_active_task_800C0DB0)
+        fprintf(stderr, "CRASH: game task %d\n", mts_active_task_800C0DB0);
+    fprintf(stderr, "CRASH: stack:");
+    for (i = 0; i < words && i < 16; i++)
+        fprintf(stderr, " %08X", (unsigned)sp[i]);
+    fprintf(stderr, "\n");
+    fflush(stderr);
+}
 
 /* return addresses on the stack: words pointing into the program's code */
 static void crash_backtrace(const uint32_t *sp, int words, uint32_t lo, uint32_t hi)
@@ -83,6 +101,8 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS *e)
             if (words > 1024)
                 words = 1024;
         }
+        const CONTEXT *c = e->ContextRecord;
+        crash_context(c->Eax, c->Ebx, c->Ecx, c->Edx, c->Esi, c->Edi, c->Ebp, (const uint32_t *)sp, words);
         crash_backtrace((const uint32_t *)sp, words, base + nt->OptionalHeader.BaseOfCode,
                         base + nt->OptionalHeader.BaseOfCode + nt->OptionalHeader.SizeOfCode);
     }
@@ -193,6 +213,11 @@ static void crash_signal(int sig, siginfo_t *info, void *uc_)
     fprintf(stderr, "\nCRASH: signal %d at EIP %08X (address %08X)\n", sig,
             (unsigned)uc->uc_mcontext.gregs[REG_EIP], (unsigned)(uintptr_t)info->si_addr);
     fflush(stderr);
+    {
+        const greg_t *g = uc->uc_mcontext.gregs;
+        crash_context(g[REG_EAX], g[REG_EBX], g[REG_ECX], g[REG_EDX], g[REG_ESI], g[REG_EDI], g[REG_EBP],
+                      (const uint32_t *)(uintptr_t)g[REG_ESP], 16);
+    }
     crash_backtrace((const uint32_t *)(uintptr_t)uc->uc_mcontext.gregs[REG_ESP], 256,
                     (uint32_t)(uintptr_t)__executable_start, (uint32_t)(uintptr_t)etext);
 #else
