@@ -314,12 +314,34 @@ static void exec_packet(const uint32_t *p, int len, int interp, int dx, int dy)
     }
 }
 
+/* diagnostics: packets whose first command is not a drawing command (VRAM
+ * transfers inside an ordering table are rare; garbage often looks like one),
+ * with the packet that links to them */
+static void check_packet(const u_long *p, const u_long *prev, unsigned len)
+{
+    static int logged;
+    unsigned cmd = len ? (unsigned)(p[1] >> 24) : 0;
+    if (!len || (cmd >= 0x20 && cmd < 0x80) || (cmd >= 0xE1 && cmd <= 0xE6) || cmd == 0x00 || cmd == 0x02)
+        return;
+    if (logged++ >= 6)
+        return;
+    psx_log("OT: odd packet %p tag %08X: %08X %08X %08X; linked from %p",
+            (const void *)p, (unsigned)p[0], (unsigned)p[1], (unsigned)p[2], (unsigned)p[3], (const void *)prev);
+    if (prev)
+        psx_log(" tag %08X: %08X %08X %08X %08X", (unsigned)prev[0], (unsigned)prev[1], (unsigned)prev[2],
+                (unsigned)prev[3], (unsigned)prev[4]);
+    psx_log("\n");
+}
+
 static void walk_ot(u_long *p, int interp, int dx, int dy)
 {
     unsigned guard = 0;
+    u_long *prev = NULL;
     while (p) {
         u_long tag = *p;
         unsigned len = TAG_LEN(tag);
+        check_packet(p, prev, len);
+        prev = p;
         if (len)
             exec_packet((const uint32_t *)(p + 1), (int)len, interp, dx, dy);
         /* a link to address 0 (kernel memory on the console) is never a packet */

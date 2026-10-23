@@ -26,6 +26,18 @@ extern void *StageCharacterEntries;
 
 int mgs_stage_bin_id = -1;
 
+/* diagnostics: type and size of the first records taken from the CD stream,
+ * with the first words of their data */
+void mgs_trace_stream(int type, int size, const void *rec)
+{
+    static int n;
+    const unsigned int *w = (const unsigned int *)rec;
+    if (n++ >= 40)
+        return;
+    printf("stream: #%d type %02x size %d at %p: %08x %08x %08x %08x\n", n, type, size, rec,
+           w[0], w[1], w[2], w[3]);
+}
+
 /* end of a stage load: a stage binary read straight from disc to the
  * overlay address (streamed region) gets the same treatment as one copied
  * there by GM_LoadInitBin() */

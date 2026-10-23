@@ -68,6 +68,9 @@ FIXUPS = [
      'tag = (unsigned int *)mgs_ptr24(val & 0xFFFFFF);'),
     ('include/libgpu.h', r'#define nextPrim\(p\)\s+\(void \*\)\(\(\(\(P_TAG \*\)\(p\)\)->addr\)\|0x80000000\)',
      '#define nextPrim(p)  \t\tmgs_ptr24(((P_TAG *)(p))->addr)'),
+    # diagnostics: the first records the game takes from the CD stream
+    ('libfs/stream.c', r'\*ptr = type \| 0x80;\n(\s*)return ptr \+ 4;',
+     r'*ptr = type | 0x80;\n\1mgs_trace_stream(type, size, ptr);\n\1return ptr + 4;'),
     # the kernel's thread tables live at physical address 0x100 on the console
     ('mts/mts_new.c', r'\(struct ToT \*\)0x100', '((struct ToT *)psx_ToT)'),
     # keep the host printf: MTS replaces it with a dummy in release builds
