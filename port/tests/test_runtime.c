@@ -101,6 +101,15 @@ static void test_gte(void)
     RotTransPers(&v, &sxy, &p, &flag);
     CHECK((short)sxy == 210 && (short)(sxy >> 16) == 145, "RTPS far = %d,%d (want 210,145)", (short)sxy, (short)(sxy >> 16));
 
+    /* saturation flags: SX2 is bit 14, SY2 bit 13 (psx-spx) */
+    v.vx = 30000; v.vy = 0;
+    RotTransPers(&v, &sxy, &p, &flag);
+    CHECK((short)sxy == 0x3FF && (flag & 0x6000) == 0x4000, "RTPS SX saturated: flag = %08lx (want bit 14)", flag);
+    v.vx = 0; v.vy = -30000;
+    RotTransPers(&v, &sxy, &p, &flag);
+    CHECK((short)(sxy >> 16) == -0x400 && (flag & 0x7000) == 0x2000, "RTPS SY saturated: flag = %08lx (want bit 13)", flag);
+    v.vx = 100; v.vy = 50;
+
     /* NCLIP of a clockwise and a counter-clockwise triangle */
     psx_gte_write_data(12, 0 | (0 << 16));
     psx_gte_write_data(13, 10 | (0 << 16));

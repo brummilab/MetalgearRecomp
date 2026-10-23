@@ -142,11 +142,11 @@ static void lim_ir3_rtp(s64 mac3_raw, int sf, int lm)
 static u8 lim_color(int n, s32 v)
 {
     if (v < 0) {
-        FLAG |= 1u << (21 - n);
+        FLAG |= 1u << (22 - n);
         return 0;
     }
     if (v > 0xFF) {
-        FLAG |= 1u << (21 - n);
+        FLAG |= 1u << (22 - n);
         return 0xFF;
     }
     return (u8)v;
@@ -168,11 +168,11 @@ static u16 lim_sz3(s64 v)
 static s16 lim_sxy(int n, s32 v)
 {
     if (v < -0x400) {
-        FLAG |= 1u << (14 - n);
+        FLAG |= 1u << (15 - n);
         return -0x400;
     }
     if (v > 0x3FF) {
-        FLAG |= 1u << (14 - n);
+        FLAG |= 1u << (15 - n);
         return 0x3FF;
     }
     return (s16)v;
@@ -587,14 +587,14 @@ void psx_gte_command(unsigned int cmd)
         break;
 
     case 0x2D: { /* AVSZ3 */
-        s64 v = mac0_set((s64)ZSF3 * ((u16)SZ1 + (u16)SZ2 + (u16)SZ3));
-        OTZ = lim_sz3(v >> 12);
+        mac0_set((s64)ZSF3 * ((u16)SZ1 + (u16)SZ2 + (u16)SZ3));
+        OTZ = lim_sz3((s32)MAC0 >> 12);   /* from the 32-bit MAC0 */
         break;
     }
 
     case 0x2E: { /* AVSZ4 */
-        s64 v = mac0_set((s64)ZSF4 * ((u16)SZ0 + (u16)SZ1 + (u16)SZ2 + (u16)SZ3));
-        OTZ = lim_sz3(v >> 12);
+        mac0_set((s64)ZSF4 * ((u16)SZ0 + (u16)SZ1 + (u16)SZ2 + (u16)SZ3));
+        OTZ = lim_sz3((s32)MAC0 >> 12);
         break;
     }
 
