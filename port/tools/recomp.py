@@ -45,6 +45,16 @@ RENAMES = {
     'fprintf': 'mgs_fprintf', 'main': 'mgs_game_main', 'printf': 'printf',
 }
 
+# overlay functions replaced by a fixed result, with the reason
+OVERRIDES = {
+    # copy protection of the Japanese disc (safechk.obj): checks for a pressed
+    # disc in a real drive and calls the BIOS exit() otherwise; meaningless
+    # for a PC port that reads the owner's disc image (>= 0: passed)
+    'SafetyCheck': '0',
+}
+
+BIOS_VECTORS = (0xA0, 0xB0, 0xC0)
+
 GPR = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3', 't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7',
        's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 't8', 't9', 'k0', 'k1', 'gp', 'sp', 'fp', 'ra']
 CALLER_SAVED = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 31}
@@ -468,6 +478,8 @@ class Recompiler:
     def call_expr(self, target):
         """C call expression for a jal to target (v0 = result)."""
         args = 'r4, r5, r6, r7, M32(r29 + 16), M32(r29 + 20), M32(r29 + 24), M32(r29 + 28)'
+        if target in BIOS_VECTORS:
+            return 'rc_bios(0x%Xu, r9, r4, r5, r6, r7)' % target
         if self.text_lo <= target < self.text_hi and (self.own is None or target in self.own):
             return '%s_%08X(%s)' % (self.prefix, target, args)
         if self.in_main(target):
@@ -596,9 +608,20 @@ class Recompiler:
             entries.append(e)
         return out, entries
 
+    def gen_override(self, start, end, name, value):
+        out = ['/* %s: replaced, see OVERRIDES in recomp.py */' % name,
+               'uint32_t %s_%08X() { return %s; }' % (self.prefix, start, value)]
+        entries = [start]
+        for e in sorted(p for p in self.secondary | self.internal | self.inner if start < p < end):
+            out.append('uint32_t %s_%08X() { return rc_unresolved(0x%08Xu, "%s+"); }' % (self.prefix, e, name))
+            entries.append(e)
+        return out, entries
+
     def gen_function(self, start, end):
         self.cur = start
         n = self.sym_at.get(start)
+        if n in OVERRIDES:
+            return self.gen_override(start, end, n, OVERRIDES[n])
         if n and self.native_name(n) in self.runtime and self.native_name(n) in self.native:
             return self.gen_forward(start, end, self.native_name(n))
         lab = set()
@@ -655,7 +678,8 @@ class Recompiler:
         def computed_jump():
             """jr to a register: a jump table inside the region, or a tail call."""
             cases = ' '.join('case 0x%08Xu: goto L_%08X;' % (t, t) for t in sorted(lab))
-            return ('switch (tgt) { %s default: return ((RcFn)(uintptr_t)tgt)(r4, r5, r6, r7, '
+            return ('switch (tgt) { %s default: if (RC_IS_BIOS(tgt)) return rc_bios(tgt, r9, r4, r5, r6, r7); '
+                    'return ((RcFn)(uintptr_t)tgt)(r4, r5, r6, r7, '
                     'M32(r29 + 16), M32(r29 + 20), M32(r29 + 24), M32(r29 + 28)); }' % cases)
 
         pc = start
@@ -709,7 +733,8 @@ class Recompiler:
                 out.append('    tgt = %s;' % R(rs))
                 if delay:
                     out.append('    ' + delay)
-                out.append('    r2 = ((RcFn)(uintptr_t)tgt)(r4, r5, r6, r7, M32(r29 + 16), M32(r29 + 20), '
+                out.append('    r2 = RC_IS_BIOS(tgt) ? rc_bios(tgt, r9, r4, r5, r6, r7) : '
+                           '((RcFn)(uintptr_t)tgt)(r4, r5, r6, r7, M32(r29 + 16), M32(r29 + 20), '
                            'M32(r29 + 24), M32(r29 + 28));')
             elif k == 'jr':
                 if rs == 31:
@@ -767,6 +792,9 @@ unsigned int psx_gte_read_ctrl(int reg);
 void         psx_gte_write_ctrl(int reg, unsigned int value);
 void         psx_gte_command(unsigned int cmd);
 uint32_t     rc_unresolved(uint32_t addr, const char *what);
+/* BIOS calls: jump to 0xA0/0xB0/0xC0 with the function number in $t1 */
+uint32_t     rc_bios(uint32_t vector, uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3);
+#define RC_IS_BIOS(t) ((t) == 0xA0u || (t) == 0xB0u || (t) == 0xC0u)
 void         rc_unknown(uint32_t pc, uint32_t insn);
 void         rc_syscall(uint32_t pc);
 
