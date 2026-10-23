@@ -41,7 +41,6 @@ execute_process(COMMAND ${ASM2C} RESULT_VARIABLE rc)
 if(NOT rc EQUAL 0)
     message(FATAL_ERROR "asm2c.py failed")
 endif()
-add_custom_target(mgs_translate COMMAND ${ASM2C} COMMENT "Translating inline assembly")
 
 function(mgs_translated out_var)
     set(result)
@@ -151,6 +150,13 @@ if(MGS_RECOMP_OVERLAYS AND MGS_WITH_OVERLAYS)
     list(LENGTH MGS_RECOMPILED n)
     message(STATUS "Recompiled overlays (${n}): ${MGS_RECOMPILED}")
 endif()
+
+# Translation runs on every build. The translated sources are declared as its
+# byproducts, so Ninja re-checks them after it ran (it only rewrites changed
+# files) and recompiles a source whose fixup changed in the same build.
+add_custom_target(mgs_translate COMMAND ${ASM2C}
+    BYPRODUCTS ${MGS_MAIN_GEN} ${MGS_OVERLAY_GEN}
+    COMMENT "Translating inline assembly")
 
 set(OVERLAY_TABLE "${CMAKE_CURRENT_BINARY_DIR}/overlay_table.c")
 add_custom_command(
