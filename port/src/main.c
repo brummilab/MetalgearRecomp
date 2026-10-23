@@ -55,6 +55,8 @@ int main(int argc, char **argv)
             fit_hud = 0;
         else if (!strcmp(argv[i], "--60fps"))
             fps60 = 1;
+        else if (!strcmp(argv[i], "--guard-mem"))
+            psx_mem_guard = 1;
         else {
             usage(argv[0]);
             return strcmp(argv[i], "--help") ? 1 : 0;

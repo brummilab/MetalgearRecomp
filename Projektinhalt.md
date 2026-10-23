@@ -30,6 +30,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 | 2026-10-22 | x86-Sprünge (Thunks) an den Original-Einsprungadressen, Overlay bleibt an 0x800C3208 | Funktionszeiger in Tabellen/Actors funktionieren ohne Zeigerübersetzung; Overlay-Daten bleiben unverändert adressierbar |
 | 2026-10-22 | Statisch eingelinkte PsyQ-Funktionen in Overlays → Laufzeitschicht | Die Kopien würden Hardware-Register ansprechen (MDEC-DMA, CD) |
 | 2026-10-22 | Overlay `rank` vorerst nicht recompiliert | Greift direkt auf Timer- und Pad-Register zu |
+| 2026-10-23 | Große Laufzeitpuffer auf dem Heap, Startprüfung der 16-MB-Grenze | Spieldaten müssen für 24-Bit-GPU-Verweise unter 16 MB liegen; recompilierte Overlays haben das Programm darüber wachsen lassen |
 
 ## Technik
 
@@ -96,3 +97,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-22:** Overlay brf (Briefing) eingebaut, und zwar über einen neuen statischen MIPS→C-Recompiler (`port/tools/recomp.py`), der alle unfertigen Overlays aus dem eigenen PS1-Build übersetzt: 16 Overlays inkl. Titelbildschirm, Thunks an den Original-Adressen, Umrechnung auf native Symbole, PsyQ-Kopien → Laufzeitschicht. Test `test_recomp` (Linux + Wine) grün, erkennt absichtliche Fehler. Mit echtem Disc-Image noch nicht getestet.
 - **2026-10-23:** `unecm` (ECM-Abbilder entpacken, mit Prüfsumme und Disc-Erkennung) ergänzt, gegen das Referenzwerkzeug getestet. Windows-Testpaket (mgs.exe, unecm.exe, SDL2.dll) für den ersten Test mit eigenem Disc-Abbild bereitgestellt.
 - **2026-10-23:** Erster Test mit echtem Disc-Abbild (Windows): Absturz beim Einlesen des Disc-Verzeichnisses (NULL-Zugriff in `srchfile.c`, auf der PS1 harmlos) behoben. Kernel-Bereich 0x80000000–0x8000FFFF wieder lesbar, nur das alte Hauptprogramm bleibt gesperrt; OT-Verweis auf 0 beendet die Liste. Absturz-Handler schreibt Absturzadresse und Aufrufkette ins Log. Mit nachgebauter Mini-Disc geprüft.
+- **2026-10-23:** Zweiter Absturz mit echtem Abbild gefunden: Durch die recompilierten Overlays lag das Programm über 16 MB, Spielvariablen wie die Zeichenlisten (`DG_Chanls`) wurden bei 24-Bit-Verweisen abgeschnitten. Große Laufzeitpuffer auf den Heap verlegt (Daten enden jetzt bei ~13 MB), Prüfung beim Start ergänzt; Speichersperre nur noch mit `--guard-mem`.

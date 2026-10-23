@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 /* ---- PsyQ types (layouts must match psyq_4.4/include) ------------------- */
 
@@ -69,9 +70,19 @@ typedef struct { u_char r, g, b, cd; } CVECTOR;
 #define PSX_MAIN_GUARD_START 0x80010000u
 #define PSX_MAIN_GUARD_END   0x800C3000u
 
+/* debugging: make the original executable's area inaccessible (--guard-mem) */
+extern int psx_mem_guard;
 int  psx_mem_init(void);
 
 /* GPU ordering-table links hold the low 24 bits of an address */
+/* Large buffers of the runtime live on the heap (allocated by constructors,
+ * before main): the program image must end below 16 MiB, or game data that
+ * the GPU links with 24-bit addresses (ordering tables) would be cut off.
+ * psx_mem_init() checks the limit. */
+#define PSX_HEAP_BUFFER(ptr, bytes) \
+    __attribute__((constructor)) static void ptr##_alloc(void) \
+    { if (!((ptr) = calloc(1, (bytes)))) abort(); }
+
 static inline void *psx_decode_addr24(uint32_t a24)
 {
     a24 &= 0xFFFFFF;

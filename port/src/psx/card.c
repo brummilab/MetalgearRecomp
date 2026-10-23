@@ -36,7 +36,8 @@ typedef struct {
     uint8_t data[CARD_SIZE];
 } Card;
 
-static Card cards[2];
+static Card *cards;
+PSX_HEAP_BUFFER(cards, 2 * sizeof(Card))
 static char save_dir[480] = ".";
 
 struct DIRENTRY {

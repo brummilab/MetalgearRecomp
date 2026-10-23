@@ -5,7 +5,7 @@
 
 #include <string.h>
 
-extern uint16_t psx_vram[];
+extern uint16_t *psx_vram;
 void psx_gpu_exec(const uint32_t *p, int len);
 void psx_gpu_reset(void);
 void psx_gpu_set_tpage(uint32_t v);
@@ -315,6 +315,14 @@ static void walk_ot(u_long *p, int interp, int dx, int dy)
         /* a link to address 0 (kernel memory on the console) is never a packet */
         if (TAG_ADDR(tag) == TAG_END || TAG_ADDR(tag) == 0)
             break;
+        /* nor one into the original executable's area (unused natively) */
+        if (TAG_ADDR(tag) >= (PSX_MAIN_GUARD_START & 0xFFFFFF) && TAG_ADDR(tag) < (PSX_MAIN_GUARD_END & 0xFFFFFF)) {
+            static int logged;
+            if (logged++ < 5)
+                psx_log("DrawOTag: link to 0x%08X (original executable area) after packet %p (tag %08X), list cut\n",
+                        (unsigned)(0x80000000u | TAG_ADDR(tag)), (void *)p, (unsigned)tag);
+            break;
+        }
         p = (u_long *)psx_decode_addr24(TAG_ADDR(tag));
         if (++guard > 1000000) {
             psx_log("DrawOTag: ordering table does not terminate\n");
@@ -339,7 +347,8 @@ static int ot_area(u_long *p, int *x, int *y)
             }
             i += psx_gpu_cmd_words(&c[i], len - i);
         }
-        if (TAG_ADDR(tag) == TAG_END || TAG_ADDR(tag) == 0)
+        if (TAG_ADDR(tag) == TAG_END || TAG_ADDR(tag) == 0 ||
+            (TAG_ADDR(tag) >= (PSX_MAIN_GUARD_START & 0xFFFFFF) && TAG_ADDR(tag) < (PSX_MAIN_GUARD_END & 0xFFFFFF)))
             break;
         p = (u_long *)psx_decode_addr24(TAG_ADDR(tag));
     }
