@@ -240,6 +240,10 @@ set_source_files_properties(${MGS_OVERLAY_OBJECTS} PROPERTIES EXTERNAL_OBJECT TR
 target_include_directories(mgs PRIVATE src)
 target_link_libraries(mgs PRIVATE psx_runtime SDL2::SDL2 m)
 
+# disc images stored as *.bin.ecm -> plain image (standalone helper)
+add_executable(unecm tools/unecm.c)
+target_compile_options(unecm PRIVATE -O2 -Wall)
+
 # --- self-tests (no game data needed) ---------------------------------------------
 add_executable(test_runtime tests/test_runtime.c src/psx/gte.c src/psx/libgte.c src/psx/gpu.c src/psx/libgpu.c
     src/psx/libcd.c src/psx/mdec.c src/psx/xa.c src/psx/spu.c src/psx/ws.c src/psx/interp.c)
