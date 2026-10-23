@@ -24,6 +24,20 @@
 
 extern void *StageCharacterEntries;
 
+int mgs_stage_bin_id = -1;
+
+/* end of a stage load: a stage binary read straight from disc to the
+ * overlay address (streamed region) gets the same treatment as one copied
+ * there by GM_LoadInitBin() */
+void mgs_native_stage_loaded(void)
+{
+    if (mgs_stage_bin_id >= 0) {
+        int id = mgs_stage_bin_id;
+        mgs_stage_bin_id = -1;
+        mgs_native_overlay_loaded(id);
+    }
+}
+
 int mgs_native_overlay_available(const char *name)
 {
     const NativeOverlay *ov;

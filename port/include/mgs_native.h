@@ -29,6 +29,8 @@ void psx_gte_note_rt(unsigned int addr);
 extern char psx_ToT[];
 void psx_idle(void);
 void mgs_native_overlay_loaded(int id);
+extern int mgs_stage_bin_id;        /* streamed stage binary being loaded, -1: none */
+void mgs_native_stage_loaded(void);
 int  mgs_native_overlay_available(const char *name);
 
 /* PS1 BIOS file I/O (memory card) and PsyQ's 15-bit rand() */
