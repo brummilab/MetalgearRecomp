@@ -125,4 +125,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-23:** Auswertung des RE:INTEGRAL-Patches umgesetzt: HZD-Bodenzeiger mit Markierung im Bit 31 (`MGS_HZD`), Markierung der roten Lebensleiste in Bit 0, NULL-Zugriffe (Munition, `GM_PlayerControl`) und nicht initialisierte Richtung in `demoexec.c`. Windows-Testpaket v25.
 - **2026-10-23:** Internetrecherche zum Thema in `docs/recherche.md`: ESP32-Port des Decomps (ausführliche Fehlerliste), RE:INTEGRAL-Fork „Reintegrated“, Werkzeuge (Rex, MINT, KMD-Noesis), Formatdoku (psx-spx STAGE.DIR), psxrecomp/RecompOne, rechtliche Regeln anderer Projekte, Abgleich mit unserem Stand.
 - **2026-10-23:** Test v25: Ton im Intro passt. Spiel lädt `s00a` (Dock), erstes Codec-Gespräch mit Campbell läuft; Absturz beim Wechsel zurück ins Spiel. Ursache: Ohne Waffe ist `GM_Weapon` = -1, und `weapon_actions_8009ED8C[-1]` ist auf der PS1 die direkt davor liegende Tabelle `actions_no_weapon_8009ED70` (Linker-Anordnung); nativ war das fremder Speicher. Per Fixup explizit gemacht (v26).
-
+- **2026-10-23:** 🎮 Test v26: **Spiel läuft nach dem ersten Codec-Gespräch im Dock (s00a) weiter**, Snake ist steuerbar.
