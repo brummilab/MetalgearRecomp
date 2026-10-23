@@ -23,7 +23,27 @@ jeweiligen READMEs bzw. Projektseiten zum genannten Datum.
 - Die beiden Recompilierungs-Projekte zielen auf die **US-Fassung** und eine
   andere Technik (Recompilierung des ganzen Spiels statt dekompiliertem C).
 
-Mögliche Richtungen für dieses Repo:
+## Entscheidung (23.10.2026): weitermachen und abgleichen
+
+Dieses Repo wird eigenständig weitergeführt (schlanker SDL-Port, Windows und
+Linux). Bei jedem neuen Problem wird **zuerst nachgesehen, wie RE:INTEGRAL bzw.
+PsyZ es gelöst hat**, bevor eine eigene Lösung entsteht:
+
+- **PsyZ** (PsyQ-Ersatz für native Builds, von Xeeynamo):
+  https://github.com/Xeeynamo/psyz – RE:INTEGRAL pinnt Commit `6d9c5730`.
+- **RE:INTEGRAL-Patches** auf mgs_reversing und PsyZ (Verzeichnis `patches/`,
+  Liste in `sources.lock.json`): Die Dateinamen benennen das Thema, z. B.
+  `mgs-title`, `mgs-intro`, `mgs-intro-playback`, `mgs-movies`,
+  `mgs-widescreen`, `mgs-loading-pacing`, `mgs-mantis`, `mgs-disc-change`,
+  `psyz-cd`, `psyz-audio`, `psyz-movies`, `psyz-xa-predictor-rounding`,
+  `psyz-loading-audio`, `psyz-spu-sweeps`, `psyz-live-adsr`,
+  `psyz-polygon-rasterization`, `psyz-masking`.
+- RE:INTEGRAL nutzt ein neueres mgs_reversing (Commit `f54dbb2a`).
+- Lizenzen beachten: Übernahmen nur mit passender Lizenz und Quellenangabe;
+  RE:INTEGRALs eigener Code steht unter MIT, die Patches auf fremden Code und
+  PsyZ haben eigene Bedingungen (siehe deren THIRD_PARTY-Dokumentation).
+
+Erwogene Richtungen:
 
 1. **Eigenständig mit klarer Nische**: schlanker, quelloffener SDL-Port ohne
    Godot, **Linux und Windows** aus einer Codebasis (RE:INTEGRAL: Linux erst

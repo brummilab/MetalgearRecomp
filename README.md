@@ -120,3 +120,12 @@ Es gibt weitere Projekte mit ähnlichem Ziel, unter anderem
 FoxdieTeams Dekompilierung, Integral JP, Windows, Kampagne durchspielbar) sowie
 statische Recompilierungen der US-Fassung. Vergleich und Folgerungen:
 [`docs/verwandte-projekte.md`](docs/verwandte-projekte.md).
+
+## Lizenz
+
+Der eigene Code und die Doku dieses Repos stehen unter der
+[MIT-Lizenz](LICENSE). Ausgenommen sind die Submodule unter `upstream/`
+(FoxdieTeam), daraus beim Build erzeugter Code und das Spiel selbst.
+Spieldaten sind nicht enthalten. Inoffizielles Projekt, nicht mit Konami
+verbunden.
+
