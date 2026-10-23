@@ -121,6 +121,10 @@ FoxdieTeams Dekompilierung, Integral JP, Windows, Kampagne durchspielbar) sowie
 statische Recompilierungen der US-Fassung. Vergleich und Folgerungen:
 [`docs/verwandte-projekte.md`](docs/verwandte-projekte.md).
 
+Eine allgemeine Recherche zu weiteren Projekten, Werkzeugen und Formaten sowie
+zu Fehlerquellen nativer PS1-Ports steht in
+[`docs/recherche.md`](docs/recherche.md).
+
 ## Lizenz
 
 Der eigene Code und die Doku dieses Repos stehen unter der
