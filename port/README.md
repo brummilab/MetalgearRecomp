@@ -232,6 +232,10 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   Puffer der Laufzeitschicht (VRAM, Sound-RAM, Film- und Memory-Card-Puffer)
   liegen deshalb auf dem Heap (`PSX_HEAP_BUFFER`), und `psx_mem_init()` bricht
   mit einer klaren Meldung ab, wenn die Programmdaten die Grenze überschreiten.
+- Funktionen, die mit `j`/`b` in eine andere springen (gemeinsamer Epilog,
+  der auf Stapelrahmen und Register des Springers angewiesen ist), werden zu
+  einer C-Funktion zusammengefasst; die Funktionsanfänge darin werden zu
+  Einstiegen (s08b: 2, d18a: 1).
 - Die Einstiegs-Hüllen recompilierter Funktionen deklarieren keine Parameter
   und lesen ihre Argumente nur (`RC_ARGS8`): Native Aufrufer übergeben über
   Funktionszeiger so viele Argumente wie das Original, und ein Compiler darf
