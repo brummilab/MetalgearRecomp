@@ -276,6 +276,13 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   `mgs_ptr24()` sie wie die GPU-Emulation auf; auf der Konsole sind sie als
   KUSEG-Adressen gültig. Zurück in Ordering Tables kommen sie wieder als
   24-Bit-Verweise (sonst landet das obere Byte im Längenfeld des Pakets).
+- **Reihenfolge der Argumente:** Der PS1-Compiler wertet Funktionsargumente
+  von links nach rechts aus, GCC auf x86 nicht zwingend. Aufrufe, deren
+  Argumente nacheinander das Skript lesen (`GCL_GetNextInt()`,
+  `GCL_GetOption()` …), schreibt `asm2c.py` in feste Reihenfolge um
+  (`GLOBAL_FIXUPS`); der Test `evalorder` (`tools/check_evalorder.py`) meldet
+  neue Fälle. Gefunden über einen Patch von
+  [RE:INTEGRAL](https://github.com/Drommedhar/mgs-reintegral) (`alert.c`).
 - Die SPU mischt bis zu einem ausgelösten Interrupt und erst nach dessen
   Handler weiter: Der Sound-Treiber nutzt den Interrupt einer stummen
   Taktstimme als Uhr für gestreamte Sprache (`test_spu_irq`).
