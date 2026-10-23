@@ -64,6 +64,11 @@ FIXUPS = [
     # ...and the list heads in DG_DivideBuffer, which divide.c stores masked
     ('libdg/sort.c', r'list = \*buf\+\+;', 'list = (unsigned int *)mgs_ptr24((unsigned long)*buf++);'),
     ('takabe/libdg2.c', r'tag = \*buf\+\+;', 'tag = (unsigned int *)mgs_ptr24((unsigned long)*buf++);'),
+    # ...and stored back into the ordering table as 24-bit links again, as the
+    # original did: a full pointer's top byte would land in the next packet's
+    # length (0x80 | 0x0C = 140 words: garbage executed as GPU commands)
+    ('libdg/sort.c', r'\*ot_ptr = \(unsigned int\)list;', '*ot_ptr = (unsigned int)list & 0xffffff;'),
+    ('takabe/libdg2.c', r'\*next = \(unsigned int\)tag;', '*next = (unsigned int)tag & 0xFFFFFF;'),
     ('takabe/libdg2.c', r'tag = \(unsigned int \*\)\(val & 0xFFFFFF\);',
      'tag = (unsigned int *)mgs_ptr24(val & 0xFFFFFF);'),
     ('include/libgpu.h', r'#define nextPrim\(p\)\s+\(void \*\)\(\(\(\(P_TAG \*\)\(p\)\)->addr\)\|0x80000000\)',

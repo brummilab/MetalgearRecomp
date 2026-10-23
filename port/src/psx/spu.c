@@ -127,6 +127,11 @@ static uint32_t reverb_voices;
 static int16_t (*xa_ring)[2];
 PSX_HEAP_BUFFER(xa_ring, XA_RING * 2 * sizeof(int16_t))
 static unsigned  xa_read, xa_write;
+/* CD audio arrives one sector (~53 ms) at a time, on the emulated drive's
+ * schedule; playback starts once this much is queued, and again after it ran
+ * dry, so the timing jitter of the deliveries is not heard as stutter */
+#define XA_PREBUFFER (OUTPUT_RATE / 10)
+static int       xa_primed;
 static int16_t   cd_vol_l, cd_vol_r;
 static int       cd_mix;
 static double    xa_phase;
@@ -162,6 +167,7 @@ int psx_spu_xa_pending(void) { return (int)(xa_write - xa_read); }
 void psx_spu_xa_flush(void)
 {
     xa_read = xa_write = 0;
+    xa_primed = 0;
     xa_phase = 0;
 }
 
@@ -365,7 +371,11 @@ static void mix(int frames)
             reverb_tick(rev_l, rev_r, &out_l, &out_r);
             l += out_l;
             r += out_r;
-            if (xa_read != xa_write) {
+            if (!xa_primed && xa_write - xa_read >= XA_PREBUFFER)
+                xa_primed = 1;
+            if (xa_primed && xa_read == xa_write)
+                xa_primed = 0;
+            if (xa_primed) {
                 if (cd_mix) {
                     l += (xa_ring[xa_read % XA_RING][0] * cd_vol_l) >> 15;
                     r += (xa_ring[xa_read % XA_RING][1] * cd_vol_r) >> 15;
