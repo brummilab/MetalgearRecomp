@@ -26,7 +26,21 @@ werden durch eine eigene Laufzeitschicht ersetzt.
 | Sound | ✔️ SPU mit 24 ADPCM-Stimmen, ADSR, Hall (Reverb nach Hardware-Formel, alle PsyQ-Presets), XA-Audio (Filmton) |
 | Filmsequenzen (STR/MDEC) | ✔️ CD-Streaming in Echtzeit, VLC-Dekoder (STR v2/v3), MDEC, XA-Ton; mit Testdaten geprüft, mit echten Filmen noch nicht |
 | Speicherstände | ✔️ Memory-Card-Image `memcard1.mcd` (Standardformat, emulatorkompatibel) |
-| Eingabe | ✔️ Tastatur und Gamepads (SDL GameController, analog) |
+| Eingabe | ✔️ Tastatur und Gamepads (SDL GameController, analog), Belegung siehe unten |
+
+### Tastenbelegung
+
+In der japanischen Fassung bestätigt **○ (Kreis)**, **× (Kreuz)** bricht ab.
+
+| PlayStation | Tastatur | Xbox-Controller |
+| --- | --- | --- |
+| ○ Kreis (bestätigen) | C | B |
+| × Kreuz (zurück) | X | A |
+| □ Quadrat | Z | X |
+| △ Dreieck | V | Y |
+| Start / Select | Enter / Backspace | Start / Back |
+| Steuerkreuz | Pfeiltasten | Steuerkreuz |
+| L1 / R1 / L2 / R2 | A / S / Q / W | LB / RB / – / – |
 
 ### Auflösung und Breitbild
 
@@ -232,6 +246,10 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   Puffer der Laufzeitschicht (VRAM, Sound-RAM, Film- und Memory-Card-Puffer)
   liegen deshalb auf dem Heap (`PSX_HEAP_BUFFER`), und `psx_mem_init()` bricht
   mit einer klaren Meldung ab, wenn die Programmdaten die Grenze überschreiten.
+- Der Kopierschutz der japanischen Disc (`SafetyCheck` in `title`/`change`,
+  prüft auf eine gepresste Disc in einem echten Laufwerk) meldet im Port
+  „bestanden“ (`OVERRIDES` in `recomp.py`). BIOS-Aufrufe aus Overlays
+  (Sprung nach 0xA0/0xB0/0xC0, Funktionsnummer in `$t1`) gehen an `rc_bios`.
 - Funktionen, die mit `j`/`b` in eine andere springen (gemeinsamer Epilog,
   der auf Stapelrahmen und Register des Springers angewiesen ist), werden zu
   einer C-Funktion zusammengefasst; die Funktionsanfänge darin werden zu
