@@ -321,12 +321,17 @@ static void check_packet(const u_long *p, const u_long *prev, unsigned len)
 {
     static int logged;
     unsigned cmd = len ? (unsigned)(p[1] >> 24) : 0;
-    if (!len || (cmd >= 0x20 && cmd < 0x80) || (cmd >= 0xE1 && cmd <= 0xE6) || cmd == 0x00 || cmd == 0x02)
+    int i;
+    /* drawing commands, environment settings, fills, cache clear + copy (DR_MOVE) */
+    if (!len || cmd < 0x03 || (cmd >= 0x20 && cmd < 0xA0) || (cmd >= 0xE1 && cmd <= 0xE6))
         return;
     if (logged++ >= 6)
         return;
-    psx_log("OT: odd packet %p tag %08X: %08X %08X %08X; linked from %p",
-            (const void *)p, (unsigned)p[0], (unsigned)p[1], (unsigned)p[2], (unsigned)p[3], (const void *)prev);
+    psx_log("OT: odd packet %p tag %08X: %08X %08X %08X; before it:",
+            (const void *)p, (unsigned)p[0], (unsigned)p[1], (unsigned)p[2], (unsigned)p[3]);
+    for (i = -8; i < 0; i++)
+        psx_log(" %08X", (unsigned)p[i]);
+    psx_log("; linked from %p", (const void *)prev);
     if (prev)
         psx_log(" tag %08X: %08X %08X %08X %08X", (unsigned)prev[0], (unsigned)prev[1], (unsigned)prev[2],
                 (unsigned)prev[3], (unsigned)prev[4]);
