@@ -43,6 +43,7 @@ void psx_idle(void);
 void mgs_native_overlay_loaded(int id);
 extern int mgs_stage_bin_id;        /* streamed stage binary being loaded, -1: none */
 void mgs_native_stage_loaded(void);
+void mgs_trace_stream(int type, int size, const void *rec);
 extern int psx_watch_stack;         /* --watch-stack: debug return-address smashing */
 void psx_watch_return_slot(void *slot);
 int  mgs_native_overlay_available(const char *name);
