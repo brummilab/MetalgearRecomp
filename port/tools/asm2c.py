@@ -126,6 +126,12 @@ FIXUPS = [
      'snake_weapon_max_ammo_800BDCBC = *(short *)MGS_HZD(work->field_918_n_bullets);'),
     ('chara/snake_vr/sna_init.c', r'snake_weapon_max_ammo_800BDCBC = \*work->field_918_n_bullets;',
      'snake_weapon_max_ammo_800BDCBC = *(short *)MGS_HZD(work->field_918_n_bullets);'),
+    # GM_Weapon is -1 without a weapon: on the console weapon_actions[-1] is
+    # actions_no_weapon, which the linker placed right in front of it
+    ('chara/snake/sna_init.c', r'&weapon_actions_8009ED8C\[GM_Weapon\]',
+     '(GM_Weapon < 0 ? &actions_no_weapon_8009ED70 : &weapon_actions_8009ED8C[GM_Weapon])'),
+    ('chara/snake_vr/sna_init.c', r'&weapon_actions_8009ED8C\[GM_Weapon\]',
+     '(GM_Weapon < 0 ? &actions_no_weapon_8009ED70 : &weapon_actions_8009ED8C[GM_Weapon])'),
     ('game/script.c', r'control = GM_PlayerControl;\n(\s*)GM_PlayerPosX', r'control = (CONTROL *)MGS_HZD(GM_PlayerControl);\n\1GM_PlayerPosX'),
     # the red life bar is flagged by clearing bit 31 of the config pointer;
     # native pointers are all below 0x80000000 (always red): use bit 0, and

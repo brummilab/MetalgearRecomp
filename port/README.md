@@ -291,6 +291,9 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   (Munition in `sna_init.c`, `GM_PlayerControl` in `script.c`) und eine
   nicht initialisierte Richtung in `kojo/demoexec.c`. Alles nach den
   RE:INTEGRAL-Patches.
+- **Negative Tabellenindizes:** Ohne Waffe ist `GM_Weapon` = -1. Auf der
+  Konsole trifft `weapon_actions_8009ED8C[-1]` die direkt davor gelinkte
+  Tabelle `actions_no_weapon_8009ED70`; `asm2c.py` macht das explizit.
 - Die SPU mischt bis zu einem ausgelösten Interrupt und erst nach dessen
   Handler weiter: Der Sound-Treiber nutzt den Interrupt einer stummen
   Taktstimme als Uhr für gestreamte Sprache (`test_spu_irq`).
