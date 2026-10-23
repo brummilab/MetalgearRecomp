@@ -6,9 +6,12 @@
 
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 static SDL_Window   *window;
 static SDL_Renderer *renderer;
+static int shot_requested;          /* F12: save the next frame */
 static SDL_Texture  *texture;
 static SDL_AudioDeviceID audio;
 static SDL_GameController *pad;
@@ -129,6 +132,8 @@ int plat_pump_events(void)
         case SDL_KEYDOWN:
             if (e.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
                 return 0;
+            if (e.key.keysym.scancode == SDL_SCANCODE_F12)
+                shot_requested = 1;
             if (e.key.keysym.scancode == SDL_SCANCODE_F11) {
                 Uint32 fs = SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
                 SDL_SetWindowFullscreen(window, fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -185,6 +190,41 @@ static uint32_t rgb555_to_argb(uint16_t c)
  * 1 << shift); x, y, w, h are the display area in original GPU pixels.
  * pillarbox shows a 4:3 picture centred in the 16:9 window (movies).
  */
+
+/* F12: the displayed frame and the PS1 VRAM (all textures and framebuffers,
+ * 15-bit) as screenshot-NNN.bmp / vram-NNN.bmp in the working directory */
+extern uint16_t *psx_vram;
+
+static void save_screenshot(const uint32_t *frame, int w, int h, int pitch)
+{
+    static int n;
+    char name[64];
+    SDL_Surface *s;
+    int x, y;
+
+    snprintf(name, sizeof(name), "screenshot-%03d.bmp", n);
+    s = SDL_CreateRGBSurfaceWithFormatFrom((void *)frame, w, h, 32, pitch * 4, SDL_PIXELFORMAT_ARGB8888);
+    if (s && SDL_SaveBMP(s, name) == 0)
+        psx_log("screenshot: %s (%dx%d)\n", name, w, h);
+    SDL_FreeSurface(s);
+    s = SDL_CreateRGBSurfaceWithFormat(0, 1024, 512, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (s) {
+        for (y = 0; y < 512; y++) {
+            uint32_t *row = (uint32_t *)((uint8_t *)s->pixels + y * s->pitch);
+            for (x = 0; x < 1024; x++) {
+                uint16_t c = psx_vram[y * 1024 + x];
+                uint32_t r = (c & 31) << 3, g = ((c >> 5) & 31) << 3, b = ((c >> 10) & 31) << 3;
+                row[x] = 0xFF000000u | r << 16 | g << 8 | b;
+            }
+        }
+        snprintf(name, sizeof(name), "vram-%03d.bmp", n);
+        if (SDL_SaveBMP(s, name) == 0)
+            psx_log("screenshot: %s (PS1 VRAM)\n", name);
+        SDL_FreeSurface(s);
+    }
+    n++;
+}
+
 void plat_present(const uint16_t *vram, int stride, int shift, int x, int y, int w, int h,
                   int rgb24, int enabled, int pillarbox)
 {
@@ -218,6 +258,20 @@ void plat_present(const uint16_t *vram, int stride, int shift, int x, int y, int
             for (i = 0; i < sw; i++)
                 out[i] = rgb555_to_argb(row[((x << shift) + i) & wmask]);
         }
+    }
+    {
+        /* MGS_SCREENSHOT_FRAME=n: also take one at the n-th presented frame */
+        static int frames, at = -2;
+        if (at == -2) {
+            const char *e = getenv("MGS_SCREENSHOT_FRAME");
+            at = e ? atoi(e) : -1;
+        }
+        if (++frames == at)
+            shot_requested = 1;
+    }
+    if (shot_requested) {
+        shot_requested = 0;
+        save_screenshot(frame, sw, sh, fw);
     }
     SDL_UpdateTexture(texture, NULL, frame, fw * 4);
     src.x = 0;
