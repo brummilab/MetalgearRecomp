@@ -100,6 +100,41 @@ FIXUPS = [
     # diagnostics: the first records the game takes from the CD stream
     ('libfs/stream.c', r'\*ptr = type \| 0x80;\n(\s*)return ptr \+ 4;',
      r'*ptr = type | 0x80;\n\1mgs_trace_stream(type, size, ptr);\n\1return ptr + 4;'),
+    # FrameRunDemo overwrites diff.vx three times and reads diff.vy/vz
+    # uninitialised (stack garbage on the console, something else natively):
+    # use the authored camera direction, as RE:INTEGRAL does (mgs-intro.patch)
+    ('kojo/demoexec.c', r'diff\.vx = \(data->center_y - data->eye_y\) >> 2;\n(\s*)diff\.vx = \(data->center_z - data->eye_z\) >> 2;',
+     r'diff.vy = (data->center_y - data->eye_y) >> 2;\n\1diff.vz = (data->center_z - data->eye_z) >> 2;'),
+    # HZD floors are stored as pointers with bit 31 cleared (to tell them
+    # from walls) and dereferenced as they are - a KUSEG mirror on the
+    # console (found with RE:INTEGRAL's mgs-native.patch)
+    ('libhzd/vector.c', r'void HZD_NormalVector\( void \*hzd, SVECTOR \*norm \)\n\{\n',
+     'void HZD_NormalVector( void *hzd, SVECTOR *norm )\n{\n    hzd = MGS_HZD( hzd );\n'),
+    ('game/control.c', r'ctrl->segs\[([01])\]->p1\.h', r'((__typeof__(ctrl->segs[\1]))MGS_HZD(ctrl->segs[\1]))->p1.h'),
+    ('chara/snake/sna_init.c', r'seg = pCtrl->segs\[(0|i)\];', r'seg = MGS_HZD(pCtrl->segs[\1]);'),
+    ('chara/snake_vr/sna_init.c', r'seg = pCtrl->segs\[(0|i)\];', r'seg = MGS_HZD(pCtrl->segs[\1]);'),
+    ('chara/snake_vr/sna_init.c', r'seg = HZD_GetOnlineHazard\(\);', 'seg = MGS_HZD(HZD_GetOnlineHazard());'),
+    ('okajima/bullet.c', r'work->seg->(p[123]|b1)\.h', r'((__typeof__(work->seg))MGS_HZD(work->seg))->\1.h'),
+    ('okajima/claymore.c', r'(\n\s*)work->field_118\.vx = floor->p1\.h;',
+     r'\1floor = MGS_HZD(floor);\1work->field_118.vx = floor->p1.h;'),
+    ('takabe/revbullt.c', r'(\n\s*)work->normal\.vx = floor->p1\.h \* 16;',
+     r'\1floor = MGS_HZD(floor);\1work->normal.vx = floor->p1.h * 16;'),
+    # NULL pointers the console reads harmlessly (start of RAM): the ammo
+    # count while no weapon is equipped (every frame) and the player position
+    # in script function calls without a player
+    ('chara/snake/sna_init.c', r'snake_weapon_max_ammo_800BDCBC = \*work->field_918_n_bullets;',
+     'snake_weapon_max_ammo_800BDCBC = *(short *)MGS_HZD(work->field_918_n_bullets);'),
+    ('chara/snake_vr/sna_init.c', r'snake_weapon_max_ammo_800BDCBC = \*work->field_918_n_bullets;',
+     'snake_weapon_max_ammo_800BDCBC = *(short *)MGS_HZD(work->field_918_n_bullets);'),
+    ('game/script.c', r'control = GM_PlayerControl;\n(\s*)GM_PlayerPosX', r'control = (CONTROL *)MGS_HZD(GM_PlayerControl);\n\1GM_PlayerPosX'),
+    # the red life bar is flagged by clearing bit 31 of the config pointer;
+    # native pointers are all below 0x80000000 (always red): use bit 0, and
+    # resolve untagged PS1 pointers from recompiled overlays
+    ('menu/life.c', r'pBar = UNTAG_PTR\(MENU_BAR_CONF, pBar\);', 'pBar = (MENU_BAR_CONF *)((unsigned int)pBar | 1);'),
+    ('menu/life.c', r'(void menu_draw_bar\(MenuPrim \*prim, long x, long y, long rest, long now, long max, MENU_BAR_CONF \*bconf\)\n\{\n)',
+     r'\1    int mgs_red_ = ((unsigned int)bconf & 1) || (unsigned int)bconf < 0x200000;\n'
+     r'    bconf = (MENU_BAR_CONF *)mgs_kuseg((void *)((unsigned int)bconf & ~1u));\n'),
+    ('menu/life.c', r'if \( !\(\(int\)bconf & 0x80000000\) \)', 'if ( mgs_red_ )'),
     # the kernel's thread tables live at physical address 0x100 on the console
     ('mts/mts_new.c', r'\(struct ToT \*\)0x100', '((struct ToT *)psx_ToT)'),
     # keep the host printf: MTS replaces it with a dummy in release builds

@@ -37,6 +37,17 @@ static inline void *mgs_ptr24(unsigned long a)
     return (void *)(a < 0x200000 ? (a | 0x80000000) : a);
 }
 
+/* A pointer whose bit 31 the game cleared as a flag (floors in HZD hazard
+ * pointers, the red life bar): on the console 0x00xxxxxx is a KUSEG mirror
+ * of RAM and still works; natively such values (and NULL, which reads the
+ * start of RAM on the console) go back to the PS1 RAM window. */
+static inline void *mgs_kuseg(const void *p)
+{
+    unsigned long a = (unsigned long)p;
+    return (void *)(a < 0x200000 ? (a | 0x80000000) : a);
+}
+#define MGS_HZD(p) mgs_kuseg(p)
+
 /* runtime hooks used by the source fixups in tools/asm2c.py */
 extern char psx_ToT[];
 void psx_idle(void);

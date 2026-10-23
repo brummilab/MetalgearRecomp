@@ -283,6 +283,14 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   (`GLOBAL_FIXUPS`); der Test `evalorder` (`tools/check_evalorder.py`) meldet
   neue Fälle. Gefunden über einen Patch von
   [RE:INTEGRAL](https://github.com/Drommedhar/mgs-reintegral) (`alert.c`).
+- **Markierungen im Bit 31:** Einige Zeiger tragen auf der Konsole eine
+  Markierung im obersten Bit (HZD-Bodenzeiger in `CONTROL`, Kugeln, Claymore,
+  Reflexkugel). Vor dem Zugriff löscht `MGS_HZD()` (= `mgs_kuseg()`) sie.
+  Die rote Lebensleiste markiert ihre Konfiguration nativ in Bit 0 statt
+  über die Adresse (`menu/life.c`). Dazu kommen abgesicherte NULL-Zugriffe
+  (Munition in `sna_init.c`, `GM_PlayerControl` in `script.c`) und eine
+  nicht initialisierte Richtung in `kojo/demoexec.c`. Alles nach den
+  RE:INTEGRAL-Patches.
 - Die SPU mischt bis zu einem ausgelösten Interrupt und erst nach dessen
   Handler weiter: Der Sound-Treiber nutzt den Interrupt einer stummen
   Taktstimme als Uhr für gestreamte Sprache (`test_spu_irq`).

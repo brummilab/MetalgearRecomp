@@ -51,6 +51,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - `docs/workflow.md` – Anleitung zum Dekompilieren einer Funktion
 - `docs/decompme-status.md` – täglicher Überblick über https://decomp.me/preset/19 (`scripts/decompme_status.py`)
 - `docs/verwandte-projekte.md` – Vergleich mit anderen MGS1-PC-Projekten (RE:INTEGRAL u. a.)
+- `docs/recherche.md` – Internetrecherche: weitere Projekte, Werkzeuge, Formate, Lehren aus anderen nativen Ports
 
 ## Stand (22.10.2026)
 
@@ -85,6 +86,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - [ ] Mit echten Szenen prüfen: HUD-Erkennung, 3D-Sprites, Markierungen über Gegnern
 - [ ] Optional: Windows-Build nativ unter Windows (MSYS2) einmal real testen
 - [ ] Fork von `mgs_reversing` für eigene Pull Requests anlegen
+- [ ] Aus `docs/recherche.md`: alle Vorzeichenbit-Zeigertests suchen, Division durch null absichern, GTE-Tests (`Square0`/`Square12`, MVMVA), übergroße Polygone verwerfen, Langzeittest über 20 min
 
 ## Verlauf
 
@@ -120,3 +122,5 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-23:** Abgleich mit anderen Projekten (`docs/verwandte-projekte.md`): Upstream unverändert (7bbcb7102), aber offene PRs #2434/#2437 vervollständigen alle Overlays. **RE:INTEGRAL** (Drommedhar) verfolgt dasselbe Ziel auf derselben Basis und ist weiter (v0.3, Kampagne durchgespielt, Windows, Godot). Zwei weitere Projekte recompilieren die US-Fassung. Richtungsentscheidung offen. Repo ist öffentlich; geprüft: keine Spieldaten, keine persönlichen Angaben, noch keine LICENSE-Datei.
 - **2026-10-23:** Entscheidung: Option 3 (eigenständig, mit Abgleich gegen RE:INTEGRAL/PsyZ). MIT-Lizenz eingetragen (`LICENSE`, Geltungsbereich ohne Submodule/Spiel). Nachschlagequellen (PsyZ, RE:INTEGRAL-Patches) in `docs/verwandte-projekte.md`.
 - **2026-10-23:** Abgleich mit RE:INTEGRAL, erster Fund: Reihenfolge der Argumentauswertung (PS1 links→rechts, x86 unbestimmt). Systematischer Scan: 28 Aufrufe (Funkrufe/Codec `MENU_RadioCall`, Funk-Nachrichten, Soundeffekte `GM_SeSet2`, 25× `GM_ConfigControlString` mit `GCL_GetOption`) auf feste Reihenfolge umgeschrieben; Test `evalorder` verhindert Rückfälle. Auswertung des großen RE:INTEGRAL-Patches (79 Dateien) läuft.
+- **2026-10-23:** Auswertung des RE:INTEGRAL-Patches umgesetzt: HZD-Bodenzeiger mit Markierung im Bit 31 (`MGS_HZD`), Markierung der roten Lebensleiste in Bit 0, NULL-Zugriffe (Munition, `GM_PlayerControl`) und nicht initialisierte Richtung in `demoexec.c`. Windows-Testpaket v25.
+- **2026-10-23:** Internetrecherche zum Thema in `docs/recherche.md`: ESP32-Port des Decomps (ausführliche Fehlerliste), RE:INTEGRAL-Fork „Reintegrated“, Werkzeuge (Rex, MINT, KMD-Noesis), Formatdoku (psx-spx STAGE.DIR), psxrecomp/RecompOne, rechtliche Regeln anderer Projekte, Abgleich mit unserem Stand.
