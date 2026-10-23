@@ -48,6 +48,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - `scripts/setup.sh`, `scripts/build-port.sh`, `scripts/build.sh`
 - `docs/workflow.md` – Anleitung zum Dekompilieren einer Funktion
 - `docs/decompme-status.md` – täglicher Überblick über https://decomp.me/preset/19 (`scripts/decompme_status.py`)
+- `docs/verwandte-projekte.md` – Vergleich mit anderen MGS1-PC-Projekten (RE:INTEGRAL u. a.)
 
 ## Stand (22.10.2026)
 
@@ -114,3 +115,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-23:** Erste Screenshots: Konami-Logo korrekt (Texturen, Paletten, Rasterung funktionieren). Schwarze Leiste unten behoben: Das Spiel zeigt nur `screen.h` = 224 von 240 Zeilen des Anzeigebereichs. Intro-Text erscheint als gelbe Blöcke – Analyse über VRAM-Abbild läuft.
 - **2026-10-23:** Ursache der Grafikfehler gefunden (Diagnose): Mein `mgs_ptr24`-Fix ließ `DG_SortChanl` volle Zeiger zurück in die Ordering Table schreiben; deren oberes Byte landete im Längenfeld des nächsten Pakets (0x8C statt 0x0C = 140 statt 12 Wörter), der GPU führte Fremddaten aus und überschrieb den Bildspeicher. Verweise werden wieder als 24 Bit gespeichert. Filmton stotterte: XA-Vorpuffer (100 ms) und Nachholen verpasster CD-Sektoren bis 1 s.
 - **2026-10-23:** Grafik nach dem Fix deutlich besser. Absturz in `DG_AddSubdividedPrim`: `getaddr()` kürzt einen Zeiger auf 24 Bit (letzte solche Stelle, gezielt gesucht). Intro-Ton stotterte: Die Sprache im Intro ist ein SPU-Stream, dessen Nachladen der Treiber über SPU-Interrupts einer Taktstimme taktet; meine SPU fasste mehrere Interrupts pro Bild zu einem zusammen (Test: 55 statt 98 pro Sekunde). Jetzt hält das Mischen am Interrupt an, bis der Handler gelaufen ist; neuer Test `test_spu_irq`.
+- **2026-10-23:** Abgleich mit anderen Projekten (`docs/verwandte-projekte.md`): Upstream unverändert (7bbcb7102), aber offene PRs #2434/#2437 vervollständigen alle Overlays. **RE:INTEGRAL** (Drommedhar) verfolgt dasselbe Ziel auf derselben Basis und ist weiter (v0.3, Kampagne durchgespielt, Windows, Godot). Zwei weitere Projekte recompilieren die US-Fassung. Richtungsentscheidung offen. Repo ist öffentlich; geprüft: keine Spieldaten, keine persönlichen Angaben, noch keine LICENSE-Datei.
