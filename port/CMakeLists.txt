@@ -154,8 +154,9 @@ endif()
 # Translation runs on every build. The translated sources are declared as its
 # byproducts, so Ninja re-checks them after it ran (it only rewrites changed
 # files) and recompiles a source whose fixup changed in the same build.
+file(GLOB_RECURSE MGS_GEN_HEADERS "${GEN_DIR}/*.h")   # asm2c already ran at configure time
 add_custom_target(mgs_translate COMMAND ${ASM2C}
-    BYPRODUCTS ${MGS_MAIN_GEN} ${MGS_OVERLAY_GEN}
+    BYPRODUCTS ${MGS_MAIN_GEN} ${MGS_OVERLAY_GEN} ${MGS_GEN_HEADERS}
     COMMENT "Translating inline assembly")
 
 set(OVERLAY_TABLE "${CMAKE_CURRENT_BINARY_DIR}/overlay_table.c")
@@ -201,7 +202,7 @@ target_link_libraries(psx_runtime PRIVATE SDL2::SDL2)
 set(RC_DIR "${CMAKE_CURRENT_BINARY_DIR}/recomp")
 set(RC_NATIVE "${RC_DIR}/native_syms.txt")
 set(RC_RUNTIME "${RC_DIR}/runtime_syms.txt")
-set(RC_FLAGS -O1 -fno-builtin -fno-stack-protector -fno-pie -fno-strict-aliasing -w)
+set(RC_FLAGS -Os -fno-builtin -fno-stack-protector -fno-pie -fno-strict-aliasing -w)
 set(MGS_RECOMP_OBJECTS)
 set(MGS_HAVE_PS1_EXE OFF)
 if(EXISTS "${MGS_ROOT}/obj/_mgsi.exe" AND EXISTS "${MGS_ROOT}/obj/asm.map")

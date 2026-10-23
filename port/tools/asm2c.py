@@ -51,6 +51,8 @@ FIXUPS = [
     ('memcard/memcard.c', r'(\n\s*)memcard_dummy\(op\);\n\}', r'\1return memcard_dummy(op);\n}'),
     ('memcard/memcard.c', r'memcard_retry\(port\);\n(\s*)return;', r'return memcard_retry(port);'),
     ('memcard/memcard.c', r'return; // FIXME: Return without value', r'return sw_card_op; // FIXME: Return without value'),
+    # reads the vector at address 0 (start of RAM on the console)
+    ('takabe/dummy_fl.c', r'\*\(SVECTOR \*\)0x00000000', '*(SVECTOR *)0x80000000'),
     # the kernel's thread tables live at physical address 0x100 on the console
     ('mts/mts_new.c', r'\(struct ToT \*\)0x100', '((struct ToT *)psx_ToT)'),
     # keep the host printf: MTS replaces it with a dummy in release builds
@@ -212,6 +214,10 @@ class Gen:
             return
         # stack pointer juggling (SetSpadStack & co.) is meaningless natively
         if op in ('move', 'addiu', 'addi', 'addu', 'subu', 'lw', 'or') and args and self.is_sp(args[0]):
+            return
+        # ...including saving the old stack pointer (sw $sp, 0($t0)), which
+        # natively would store to an untranslated, i.e. null, address
+        if op == 'sw' and args and self.is_sp(args[0]):
             return
         if op not in ('lw', 'lh', 'lhu', 'lb', 'lbu', 'ctc2', 'mtc2', 'lwc2', 'swc2', 'sw', 'sh', 'sb') \
                 and args and not self.is_sp(args[0]) and args[0].startswith(('$', '%')):
