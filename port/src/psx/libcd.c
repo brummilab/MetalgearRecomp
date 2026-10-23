@@ -202,6 +202,7 @@ int CdSync(int m, u_char *result)
 
 int CdGetSector(void *madr, int size)
 {
+    madr = psx_dma_ptr(madr);
     int bytes = size * 4;
     if (sector_pos + bytes > SECTOR_BYTES)
         bytes = SECTOR_BYTES - sector_pos;

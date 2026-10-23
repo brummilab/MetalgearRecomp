@@ -438,7 +438,7 @@ int ClearImage(RECT *r, u_char red, u_char green, u_char blue)
 
 int LoadImage(RECT *r, u_long *p)
 {
-    psx_gpu_load(r->x, r->y, r->w, r->h, (const uint16_t *)p);
+    psx_gpu_load(r->x, r->y, r->w, r->h, (const uint16_t *)psx_dma_ptr(p));
     return 0;
 }
 
@@ -446,7 +446,7 @@ int LoadImage2(RECT *r, u_long *p) { return LoadImage(r, p); }
 
 int StoreImage(RECT *r, u_long *p)
 {
-    psx_gpu_store(r->x, r->y, r->w, r->h, (uint16_t *)p);
+    psx_gpu_store(r->x, r->y, r->w, r->h, (uint16_t *)psx_dma_ptr(p));
     return 0;
 }
 

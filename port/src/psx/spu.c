@@ -447,7 +447,7 @@ unsigned long SpuWrite(unsigned char *addr, unsigned long size)
     unsigned long n = size;
     if (transfer_addr + n > SPU_RAM_SIZE)
         n = SPU_RAM_SIZE - transfer_addr;
-    memcpy(&spu_ram[transfer_addr], addr, n);
+    memcpy(&spu_ram[transfer_addr], psx_dma_ptr(addr), n);
     transfer_addr += (uint32_t)n;
     return size;
 }

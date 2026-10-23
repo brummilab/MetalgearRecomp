@@ -83,6 +83,17 @@ int  psx_mem_init(void);
     __attribute__((constructor)) static void ptr##_alloc(void) \
     { if (!((ptr) = calloc(1, (bytes)))) abort(); }
 
+/* A pointer the game hands to a DMA transfer: low addresses (NULL and the
+ * like) are the start of RAM on the console, harmless to read; natively they
+ * would fault, so they are mapped to the PS1 RAM window like there. */
+static inline void *psx_dma_ptr(const void *p)
+{
+    uintptr_t a = (uintptr_t)p;
+    if (a < 0x10000u)
+        return (void *)(uintptr_t)(PSX_RAM_BASE | a);
+    return (void *)p;
+}
+
 static inline void *psx_decode_addr24(uint32_t a24)
 {
     a24 &= 0xFFFFFF;
