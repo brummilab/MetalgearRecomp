@@ -61,6 +61,9 @@ FIXUPS = [
     # natively they have to be resolved like the GPU does (mgs_ptr24)
     ('libdg/sort.c', r'list = \(unsigned int \*\)\(index & 0xffffff\);',
      'list = (unsigned int *)mgs_ptr24(index & 0xffffff);'),
+    # ...and the list heads in DG_DivideBuffer, which divide.c stores masked
+    ('libdg/sort.c', r'list = \*buf\+\+;', 'list = (unsigned int *)mgs_ptr24((unsigned long)*buf++);'),
+    ('takabe/libdg2.c', r'tag = \*buf\+\+;', 'tag = (unsigned int *)mgs_ptr24((unsigned long)*buf++);'),
     ('takabe/libdg2.c', r'tag = \(unsigned int \*\)\(val & 0xFFFFFF\);',
      'tag = (unsigned int *)mgs_ptr24(val & 0xFFFFFF);'),
     ('include/libgpu.h', r'#define nextPrim\(p\)\s+\(void \*\)\(\(\(\(P_TAG \*\)\(p\)\)->addr\)\|0x80000000\)',
