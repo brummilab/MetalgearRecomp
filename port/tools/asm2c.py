@@ -64,6 +64,9 @@ FIXUPS = [
     # ...and the list heads in DG_DivideBuffer, which divide.c stores masked
     ('libdg/sort.c', r'list = \*buf\+\+;', 'list = (unsigned int *)mgs_ptr24((unsigned long)*buf++);'),
     ('takabe/libdg2.c', r'tag = \*buf\+\+;', 'tag = (unsigned int *)mgs_ptr24((unsigned long)*buf++);'),
+    # a pointer cut to 24 bits with getaddr() and used as a pointer again
+    ('libdg/divide.c', r'pack = \(POLY_GT4\*\)getaddr\( &org_pack \);',
+     'pack = (POLY_GT4*)mgs_ptr24(getaddr( &org_pack ));'),
     # ...and stored back into the ordering table as 24-bit links again, as the
     # original did: a full pointer's top byte would land in the next packet's
     # length (0x80 | 0x0C = 140 words: garbage executed as GPU commands)

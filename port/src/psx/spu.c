@@ -342,14 +342,17 @@ static int32_t voice_sample(Voice *v)
     return out;
 }
 
-static void mix(int frames)
+/* Mix up to frames output frames; stops right after a frame that raised the
+ * SPU interrupt (when a handler is installed), so the handler runs at that
+ * point of the sound stream like on the console. Returns the frames mixed. */
+static int mix(int frames)
 {
     int16_t buf[2 * 1024];
-    int i, n;
+    int i, n, done = 0, stop = 0;
 
-    while (frames > 0) {
+    while (frames > 0 && !stop) {
         n = frames > 1024 ? 1024 : frames;
-        for (i = 0; i < n; i++) {
+        for (i = 0; i < n && !stop; i++) {
             int32_t l = 0, r = 0, rev_l = 0, rev_r = 0, out_l, out_r;
             int k;
             for (k = 0; k < NUM_VOICES; k++) {
@@ -394,10 +397,26 @@ static void mix(int frames)
                 r = -32768;
             buf[i * 2] = (int16_t)l;
             buf[i * 2 + 1] = (int16_t)r;
+            if (irq_pending && irq_callback)
+                stop = 1;
         }
+        n = i;
         plat_audio_queue(buf, n);
         frames -= n;
+        done += n;
     }
+    return done;
+}
+
+/* output frames due (one vblank's worth each vblank) but not mixed yet:
+ * mixing waits at a pending SPU interrupt until its handler has run */
+static int mix_debt;
+
+static void mix_due(void)
+{
+    if (irq_pending && irq_callback)
+        return;
+    mix_debt -= mix(mix_debt);
 }
 
 /* called once per vblank */
@@ -410,16 +429,22 @@ void psx_spu_vblank(void)
     /* keep latency bounded if the host audio device stalls */
     if (plat_audio_queued_frames() > OUTPUT_RATE / 5)
         return;
-    mix(frames);
+    mix_debt += frames;
+    if (mix_debt > OUTPUT_RATE / 5)          /* interrupts not delivered for long */
+        mix_debt = OUTPUT_RATE / 5;
+    mix_due();
 }
 
 /* called from the interrupt dispatcher */
 void psx_spu_interrupt(void)
 {
-    if (irq_pending) {
+    int guard = 0;
+    /* one handler call per interrupt, then mix on to the next one */
+    while (irq_pending && guard++ < 64) {
         irq_pending = 0;
         if (irq_callback)
             irq_callback();
+        mix_due();
     }
 }
 
