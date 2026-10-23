@@ -265,6 +265,9 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   mit `-Os` übersetzt, damit die Programmdaten unter 16 MB bleiben (derzeit
   ~14,1 MB). Wird es knapp, gehört der recompilierte Code in ein eigenes Modul
   oberhalb von 16 MB (Code muss nicht unter der Grenze liegen, nur Daten).
+- **F12** speichert das angezeigte Bild (`screenshot-NNN.bmp`) und den
+  PS1-Bildspeicher (`vram-NNN.bmp`, alle Texturen und Bildpuffer) im
+  Arbeitsverzeichnis; `MGS_SCREENSHOT_FRAME=n` löst das beim n-ten Bild aus.
 - Fehlersuche: `--watch-stack` (Windows) überwacht per Hardware-Watchpoint
   die Rücksprungadresse der Actor-Schleife und meldet mit `WATCH:`, welche
   Anweisung sie überschreibt; `--guard-mem` sperrt den alten Programmbereich.
