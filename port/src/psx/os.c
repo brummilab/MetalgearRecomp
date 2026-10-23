@@ -1,6 +1,29 @@
+#ifndef _WIN32
+#define _GNU_SOURCE     /* REG_EIP */
+#endif
 #include "os.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+
+extern char __executable_start[] __attribute__((weak));
+extern char etext[] __attribute__((weak));
+
+/* return addresses on the stack: words pointing into the program's code */
+static void crash_backtrace(const uint32_t *sp, uint32_t lo, uint32_t hi)
+{
+    int i, n = 0;
+    fprintf(stderr, "CRASH: probable call chain:");
+    for (i = 0; i < 512 && n < 24; i++) {
+        uint32_t v = sp[i];
+        if (v >= lo && v < hi) {
+            fprintf(stderr, " %08X", v);
+            n++;
+        }
+    }
+    fprintf(stderr, "\n");
+    fflush(stderr);
+}
 
 #ifdef _WIN32
 #include <windows.h>
@@ -21,6 +44,29 @@ int os_protect_none(uint32_t addr, uint32_t size)
 {
     DWORD old;
     return VirtualProtect((void *)(uintptr_t)addr, size, PAGE_NOACCESS, &old) ? 0 : -1;
+}
+
+static LONG WINAPI crash_filter(EXCEPTION_POINTERS *e)
+{
+    const EXCEPTION_RECORD *r = e->ExceptionRecord;
+    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)GetModuleHandleA(NULL);
+    const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const char *)dos + dos->e_lfanew);
+    uint32_t base = (uint32_t)(uintptr_t)dos;
+
+    fprintf(stderr, "\nCRASH: exception 0x%08lX at EIP %08lX", (unsigned long)r->ExceptionCode,
+            (unsigned long)e->ContextRecord->Eip);
+    if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2)
+        fprintf(stderr, " (%s address %08lX)", r->ExceptionInformation[0] ? "write to" : "read from",
+                (unsigned long)r->ExceptionInformation[1]);
+    fprintf(stderr, "\n");
+    crash_backtrace((const uint32_t *)(uintptr_t)e->ContextRecord->Esp, base + nt->OptionalHeader.BaseOfCode,
+                    base + nt->OptionalHeader.BaseOfCode + nt->OptionalHeader.SizeOfCode);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+void os_install_crash_handler(void)
+{
+    SetUnhandledExceptionFilter(crash_filter);
 }
 
 static void CALLBACK fiber_start(LPVOID arg)
@@ -62,8 +108,10 @@ void os_fiber_switch(os_fiber *from, os_fiber *to)
 }
 
 #else
+#include <signal.h>
 #include <sys/mman.h>
 #include <ucontext.h>
+#include <unistd.h>
 
 #ifndef MAP_FIXED_NOREPLACE
 #define MAP_FIXED_NOREPLACE 0x100000
@@ -86,6 +134,41 @@ void *os_map_fixed(uint32_t addr, uint32_t size, int exec)
 int os_protect_none(uint32_t addr, uint32_t size)
 {
     return mprotect((void *)(uintptr_t)addr, size, PROT_NONE);
+}
+
+static void crash_signal(int sig, siginfo_t *info, void *uc_)
+{
+    ucontext_t *uc = uc_;
+#if defined(__i386__) && defined(REG_EIP)
+    fprintf(stderr, "\nCRASH: signal %d at EIP %08X (address %08X)\n", sig,
+            (unsigned)uc->uc_mcontext.gregs[REG_EIP], (unsigned)(uintptr_t)info->si_addr);
+    crash_backtrace((const uint32_t *)(uintptr_t)uc->uc_mcontext.gregs[REG_ESP],
+                    (uint32_t)(uintptr_t)__executable_start, (uint32_t)(uintptr_t)etext);
+#else
+    (void)uc;
+    fprintf(stderr, "\nCRASH: signal %d (address %p)\n", sig, info->si_addr);
+#endif
+    fflush(stderr);
+    _exit(128 + sig);
+}
+
+void os_install_crash_handler(void)
+{
+    static char alt[65536];
+    stack_t ss;
+    struct sigaction sa;
+
+    ss.ss_sp = alt;                     /* also catches fiber stack overflows */
+    ss.ss_size = sizeof(alt);
+    ss.ss_flags = 0;
+    sigaltstack(&ss, NULL);
+    sa.sa_sigaction = crash_signal;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+    sigaction(SIGILL, &sa, NULL);
+    sigaction(SIGFPE, &sa, NULL);
 }
 
 os_fiber *os_fiber_init_main(void)

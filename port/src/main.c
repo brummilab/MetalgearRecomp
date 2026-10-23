@@ -3,6 +3,7 @@
  * own main() (renamed to mgs_game_main by the build).
  */
 #include "psx/psx.h"
+#include "psx/os.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,6 +64,7 @@ int main(int argc, char **argv)
         scale = 1;
 
     setvbuf(stdout, NULL, _IONBF, 0);
+    os_install_crash_handler();
 
     if (psx_mem_init() != 0)
         return 1;
