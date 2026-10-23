@@ -112,3 +112,11 @@ urheberrechtlich geschützt (© Konami) und dürfen nicht eingecheckt werden;
 legal erworbene Kopie des Spiels.
 
 Das Upstream-Projekt `mgs_reversing` hat derzeit keine ausgewiesene Lizenz.
+
+## Verwandte Projekte
+
+Es gibt weitere Projekte mit ähnlichem Ziel, unter anderem
+[RE:INTEGRAL](https://github.com/Drommedhar/mgs-reintegral) (ebenfalls auf Basis von
+FoxdieTeams Dekompilierung, Integral JP, Windows, Kampagne durchspielbar) sowie
+statische Recompilierungen der US-Fassung. Vergleich und Folgerungen:
+[`docs/verwandte-projekte.md`](docs/verwandte-projekte.md).
