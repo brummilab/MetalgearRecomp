@@ -53,9 +53,19 @@ void psx_gpu_vblank(void)
         stride = 1024;
         shift = 0;
     }
-    plat_present(vram, stride, shift, disp_env.disp.x, disp_env.disp.y, disp_env.disp.w,
-                 disp_env.disp.h, disp_env.isrgb24, disp_enabled,
+    {
+        /* the TV shows screen.h scanlines of the display area (MGS: 224 of
+         * 240; doubled in interlaced modes) - the rest is never drawn */
+        int h = disp_env.disp.h;
+        if (disp_env.screen.h > 0) {
+            int vis = disp_env.screen.h * (h > 256 ? 2 : 1);
+            if (vis < h)
+                h = vis;
+        }
+        plat_present(vram, stride, shift, disp_env.disp.x, disp_env.disp.y, disp_env.disp.w,
+                 h, disp_env.isrgb24, disp_enabled,
                  psx_gte_widescreen && psx_ws_movie_active());
+    }
     run_pending(0);
 }
 
