@@ -18,13 +18,13 @@ werden durch eine eigene Laufzeitschicht ersetzt.
 | Build Linux (x86, 32 Bit) | ✔️ baut, linkt, Selbsttests grün |
 | Build Windows (MinGW, 32 Bit) | ✔️ baut, linkt, Selbsttests grün (getestet unter Wine) |
 | Boot | ✔️ Taskscheduler, alle Systemtasks, Memory Card, Pad, Dateisystem starten |
-| Spielablauf mit Disc-Image | ⚠️ noch nicht getestet (kein Disc-Image verfügbar) |
+| Spielablauf mit Disc-Image | ⚠️ getestet bis ins Dock (`s00a`): Titel, Menü, Intro, erstes Codec-Gespräch, Steuerung; Figuren nah an der Kamera mit Zacken, Rauschen im Codec |
 | Titelbildschirm | ✔️ Overlay `title` recompiliert (mit PS1-Build); ohne ihn Start im Debug-Stage-Select (`select1`) |
 | Stages | 62 Overlays nativ, 16 weitere recompiliert (u. a. `brf`, `s07b`, `s08b`, `s11d`, `s14e`, `s19b`); es fehlen `rank` (Hardware-Zugriffe) und `s07br` (kein PS1-Build-Ausgang) |
 | Grafik | ✔️ Software-GPU (alle GP0-Befehle, Halbtransparenz, Dithering, Maskenbit), interne Auflösung 1×/2×/4×, Breitbild 16:9 |
-| 3D-Mathematik | ✔️ GTE-Emulation nach Hardware-Spezifikation |
+| 3D-Mathematik | ✔️ GTE-Emulation nach Hardware-Spezifikation, per Differenztest mit PsyZ abgeglichen |
 | Sound | ✔️ SPU mit 24 ADPCM-Stimmen, ADSR, Hall (Reverb nach Hardware-Formel, alle PsyQ-Presets), XA-Audio (Filmton), SPU-Interrupts samplegenau (Takt für gestreamte Sprache) |
-| Filmsequenzen (STR/MDEC) | ✔️ CD-Streaming in Echtzeit, VLC-Dekoder (STR v2/v3), MDEC, XA-Ton; mit Testdaten geprüft, mit echten Filmen noch nicht |
+| Filmsequenzen (STR/MDEC) | ✔️ CD-Streaming in Echtzeit, VLC-Dekoder (STR v2/v3), MDEC, XA-Ton; Intro mit echter Disc läuft (Bild und Ton) |
 | Speicherstände | ✔️ Memory-Card-Image `memcard1.mcd` (Standardformat, emulatorkompatibel) |
 | Eingabe | ✔️ Tastatur und Gamepads (SDL GameController, analog), Belegung siehe unten |
 
