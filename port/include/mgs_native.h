@@ -25,6 +25,18 @@ void         psx_gte_command(unsigned int cmd);
 void psx_gte_note_rt(unsigned int addr);
 #define GTE_NOTE_RT(a) psx_gte_note_rt(a)
 
+/* A 24-bit GPU link (ordering tables, primitive chains) as a pointer, the
+ * way the GPU emulation resolves it (psx_decode_addr24): addresses below
+ * 2 MiB are PS1 RAM, the rest is native data below 16 MiB; 0 stays NULL.
+ * On the console a masked link is a valid KUSEG address as it is. */
+static inline void *mgs_ptr24(unsigned long a)
+{
+    a &= 0xFFFFFF;
+    if (a == 0)
+        return (void *)0;
+    return (void *)(a < 0x200000 ? (a | 0x80000000) : a);
+}
+
 /* runtime hooks used by the source fixups in tools/asm2c.py */
 extern char psx_ToT[];
 void psx_idle(void);

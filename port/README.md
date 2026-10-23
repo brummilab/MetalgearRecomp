@@ -268,6 +268,9 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
 - Fehlersuche: `--watch-stack` (Windows) überwacht per Hardware-Watchpoint
   die Rücksprungadresse der Actor-Schleife und meldet mit `WATCH:`, welche
   Anweisung sie überschreibt; `--guard-mem` sperrt den alten Programmbereich.
+- Wo der Spielcode 24-Bit-Verweise selbst in Zeiger umwandelt (`DG_SortChanl`,
+  `libdg2.c`, PsyQ-Makro `nextPrim`), löst `mgs_ptr24()` sie wie die
+  GPU-Emulation auf; auf der Konsole sind sie als KUSEG-Adressen gültig.
 - Bei einem Absturz schreibt das Programm `CRASH:`-Zeilen mit Adresse und
   Aufrufkette ins Log (zuordnen mit `addr2line`/`nm` auf dem Build mit
   Debug-Infos).
