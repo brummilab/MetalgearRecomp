@@ -63,9 +63,11 @@ typedef struct { u_char r, g, b, cd; } CVECTOR;
 /* overlay load address returned by mts_get_bss_tail() (_bss_orgend): the
  * original address, so recompiled overlays find their data where it was */
 #define PSX_OVERLAY_BASE 0x800C3208u
-/* below it the original executable lived; unused natively and blocked so
- * that untranslated accesses from recompiled code fault immediately */
-#define PSX_MAIN_GUARD_END 0x800C3000u
+/* below it the original executable lived (from 0x80010000); unused natively
+ * and blocked so that untranslated accesses from recompiled code fault
+ * immediately. The kernel area below stays accessible like on the console. */
+#define PSX_MAIN_GUARD_START 0x80010000u
+#define PSX_MAIN_GUARD_END   0x800C3000u
 
 int  psx_mem_init(void);
 

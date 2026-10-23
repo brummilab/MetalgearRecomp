@@ -312,7 +312,8 @@ static void walk_ot(u_long *p, int interp, int dx, int dy)
         unsigned len = TAG_LEN(tag);
         if (len)
             exec_packet((const uint32_t *)(p + 1), (int)len, interp, dx, dy);
-        if (TAG_ADDR(tag) == TAG_END)
+        /* a link to address 0 (kernel memory on the console) is never a packet */
+        if (TAG_ADDR(tag) == TAG_END || TAG_ADDR(tag) == 0)
             break;
         p = (u_long *)psx_decode_addr24(TAG_ADDR(tag));
         if (++guard > 1000000) {
@@ -338,7 +339,7 @@ static int ot_area(u_long *p, int *x, int *y)
             }
             i += psx_gpu_cmd_words(&c[i], len - i);
         }
-        if (TAG_ADDR(tag) == TAG_END)
+        if (TAG_ADDR(tag) == TAG_END || TAG_ADDR(tag) == 0)
             break;
         p = (u_long *)psx_decode_addr24(TAG_ADDR(tag));
     }

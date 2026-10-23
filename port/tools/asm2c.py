@@ -38,6 +38,9 @@ FIXUPS = [
     # casts as lvalues were removed after GCC 3.x
     ('menu/radioanim.c', r'\(\(int\)\(offset\) = \(int\)\(ptr\) \+ \(int\)\(offset\)\)',
      '(*(int *)&(offset) = (int)(ptr) + (int)(offset))'),
+    # the directory scan prints found->pos also for files missing from the
+    # table (found == NULL); the console just reads address 0
+    ('libfs/srchfile.c', r'size, found->pos\);', 'size, found ? found->pos : 0);'),
     # the kernel's thread tables live at physical address 0x100 on the console
     ('mts/mts_new.c', r'\(struct ToT \*\)0x100', '((struct ToT *)psx_ToT)'),
     # keep the host printf: MTS replaces it with a dummy in release builds

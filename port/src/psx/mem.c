@@ -23,9 +23,9 @@ int psx_mem_init(void)
     }
     memset((void *)(uintptr_t)PSX_RAM_BASE, 0, PSX_RAM_SIZE);
     memset((void *)(uintptr_t)PSX_SPAD_BASE, 0, PSX_SPAD_SIZE);
-    /* kernel area and original executable: unused natively, so any stray
-     * access (e.g. an untranslated address in recompiled code) faults */
-    if (os_protect_none(PSX_RAM_BASE, PSX_MAIN_GUARD_END - PSX_RAM_BASE) != 0)
+    /* original executable: unused natively, so any stray access (e.g. an
+     * untranslated address in recompiled code) faults */
+    if (os_protect_none(PSX_MAIN_GUARD_START, PSX_MAIN_GUARD_END - PSX_MAIN_GUARD_START) != 0)
         psx_log("mem: cannot protect the original executable area\n");
     return 0;
 }
