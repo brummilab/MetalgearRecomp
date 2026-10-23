@@ -23,7 +23,7 @@ werden durch eine eigene Laufzeitschicht ersetzt.
 | Stages | 62 Overlays nativ, 16 weitere recompiliert (u. a. `brf`, `s07b`, `s08b`, `s11d`, `s14e`, `s19b`); es fehlen `rank` (Hardware-Zugriffe) und `s07br` (kein PS1-Build-Ausgang) |
 | Grafik | ✔️ Software-GPU (alle GP0-Befehle, Halbtransparenz, Dithering, Maskenbit), interne Auflösung 1×/2×/4×, Breitbild 16:9 |
 | 3D-Mathematik | ✔️ GTE-Emulation nach Hardware-Spezifikation |
-| Sound | ✔️ SPU mit 24 ADPCM-Stimmen, ADSR, Hall (Reverb nach Hardware-Formel, alle PsyQ-Presets), XA-Audio (Filmton) |
+| Sound | ✔️ SPU mit 24 ADPCM-Stimmen, ADSR, Hall (Reverb nach Hardware-Formel, alle PsyQ-Presets), XA-Audio (Filmton), SPU-Interrupts samplegenau (Takt für gestreamte Sprache) |
 | Filmsequenzen (STR/MDEC) | ✔️ CD-Streaming in Echtzeit, VLC-Dekoder (STR v2/v3), MDEC, XA-Ton; mit Testdaten geprüft, mit echten Filmen noch nicht |
 | Speicherstände | ✔️ Memory-Card-Image `memcard1.mcd` (Standardformat, emulatorkompatibel) |
 | Eingabe | ✔️ Tastatur und Gamepads (SDL GameController, analog), Belegung siehe unten |
@@ -272,8 +272,13 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   die Rücksprungadresse der Actor-Schleife und meldet mit `WATCH:`, welche
   Anweisung sie überschreibt; `--guard-mem` sperrt den alten Programmbereich.
 - Wo der Spielcode 24-Bit-Verweise selbst in Zeiger umwandelt (`DG_SortChanl`,
-  `libdg2.c`, PsyQ-Makro `nextPrim`), löst `mgs_ptr24()` sie wie die
-  GPU-Emulation auf; auf der Konsole sind sie als KUSEG-Adressen gültig.
+  `libdg2.c`, `divide.c` über `getaddr`, PsyQ-Makro `nextPrim`), löst
+  `mgs_ptr24()` sie wie die GPU-Emulation auf; auf der Konsole sind sie als
+  KUSEG-Adressen gültig. Zurück in Ordering Tables kommen sie wieder als
+  24-Bit-Verweise (sonst landet das obere Byte im Längenfeld des Pakets).
+- Die SPU mischt bis zu einem ausgelösten Interrupt und erst nach dessen
+  Handler weiter: Der Sound-Treiber nutzt den Interrupt einer stummen
+  Taktstimme als Uhr für gestreamte Sprache (`test_spu_irq`).
 - Bei einem Absturz schreibt das Programm `CRASH:`-Zeilen mit Adresse und
   Aufrufkette ins Log (zuordnen mit `addr2line`/`nm` auf dem Build mit
   Debug-Infos).

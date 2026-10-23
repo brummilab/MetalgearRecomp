@@ -395,6 +395,63 @@ static void test_reverb(void)
     CHECK(wet > 50, "reverb tail missing (peak %d)", wet);
 }
 
+/* ---- SPU interrupt as a clock (MGS's streamed voice) ------------------------------------
+ * The sound driver loops a silent "timer" voice over 512 bytes and moves the
+ * IRQ address between both halves in its handler; every IRQ advances its
+ * estimate of the stream position. Each crossing must give one handler call:
+ * 256 bytes = 16 blocks = 448 samples, at 44.1 kHz about 98 per second. */
+typedef void (*SpuIRQCallbackProc)(void);
+long SpuSetIRQ(long on_off);
+unsigned long SpuSetIRQAddr(unsigned long addr);
+SpuIRQCallbackProc SpuSetIRQCallback(SpuIRQCallbackProc func);
+void psx_spu_interrupt(void);
+
+static int irq_count;
+
+static void timer_irq(void)
+{
+    irq_count++;
+    SpuSetIRQAddr((irq_count & 1) ? 0x1010 : 0x1110);
+    SpuSetIRQ(3);        /* SPU_RESET */
+}
+
+static void test_spu_irq(void)
+{
+    static unsigned char blank[512];
+    VoiceAttr v;
+    int i;
+
+    psx_spu_init();
+    memset(blank, 0, sizeof(blank));
+    for (i = 0; i < 32; i++)
+        blank[i * 16 + 1] = i == 0 ? 0x04 : i == 31 ? 0x03 : 0x00;   /* loop start / end+repeat */
+    SpuSetTransferStartAddr(0x1010);
+    SpuWrite(blank, sizeof(blank));
+
+    memset(&v, 0, sizeof(v));
+    v.voice = 1;
+    v.mask = (1 << 4) | (1 << 7) | (1 << 17) | (1 << 18);
+    v.pitch = 0x1000;
+    v.addr = 0x1010;
+    v.adsr1 = 0x000F;
+    SpuSetVoiceAttr(&v);
+    SpuSetKey(1, 1);
+
+    irq_count = 0;
+    SpuSetIRQCallback(timer_irq);
+    SpuSetIRQAddr(0x1110);
+    SpuSetIRQ(1);
+    for (i = 0; i < 60; i++) {
+        psx_spu_vblank();
+        psx_spu_interrupt();
+    }
+    SpuSetIRQ(0);
+    SpuSetIRQCallback(NULL);
+    SpuSetKey(0, 1);
+    /* 60 vblanks = 60 * 44100 / 59.94 frames = 44144 -> 98.5 crossings */
+    CHECK(irq_count >= 96 && irq_count <= 100, "SPU IRQ clock: %d handler calls in 1 s (want ~98)", irq_count);
+}
+
 /* ---- widescreen HUD ------------------------------------------------------------------- */
 
 static void test_widescreen_hud(void)
@@ -603,6 +660,7 @@ int main(int argc, char **argv)
     test_gpu();
     test_movie();
     test_reverb();
+    test_spu_irq();
     test_widescreen_hud();
     test_interp();
     if (argc > 1)
