@@ -408,6 +408,7 @@ void DecDCTReset(int mode)
 
 void DecDCTin(u_long *buf, int mode)
 {
+    buf = psx_dma_ptr(buf);
     const uint16_t *src = (const uint16_t *)(buf + 1);
     size_t avail = buf[0], n = 0;
     float blocks[6][64];
@@ -433,7 +434,7 @@ void DecDCTin(u_long *buf, int mode)
 
 void DecDCTout(u_long *buf, int size)
 {
-    out_buf = buf;
+    out_buf = psx_dma_ptr(buf);
     out_words = size;
     out_pending = 1;
     serve();
