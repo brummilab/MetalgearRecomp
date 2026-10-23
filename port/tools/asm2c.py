@@ -57,6 +57,14 @@ FIXUPS = [
     ('libgv/actor.c', r'void GV_ExecActorSystem\( void \)\n\{\n(\s*)AList \*list;\n(\s*)int    i, pause;\n',
      r'void GV_ExecActorSystem( void )\n{\n\1AList *list;\n\2int    i, pause;\n\n'
      r'\1if ( psx_watch_stack )\n\1    psx_watch_return_slot( (char *)__builtin_frame_address( 0 ) + 4 );\n'),
+    # 24-bit links taken as pointers: valid KUSEG addresses on the console,
+    # natively they have to be resolved like the GPU does (mgs_ptr24)
+    ('libdg/sort.c', r'list = \(unsigned int \*\)\(index & 0xffffff\);',
+     'list = (unsigned int *)mgs_ptr24(index & 0xffffff);'),
+    ('takabe/libdg2.c', r'tag = \(unsigned int \*\)\(val & 0xFFFFFF\);',
+     'tag = (unsigned int *)mgs_ptr24(val & 0xFFFFFF);'),
+    ('include/libgpu.h', r'#define nextPrim\(p\)\s+\(void \*\)\(\(\(\(P_TAG \*\)\(p\)\)->addr\)\|0x80000000\)',
+     '#define nextPrim(p)  \t\tmgs_ptr24(((P_TAG *)(p))->addr)'),
     # the kernel's thread tables live at physical address 0x100 on the console
     ('mts/mts_new.c', r'\(struct ToT \*\)0x100', '((struct ToT *)psx_ToT)'),
     # keep the host printf: MTS replaces it with a dummy in release builds
