@@ -549,6 +549,20 @@ void SpuGetVoiceAttr(SpuVoiceAttr *a)
     a->loop_addr = voices[i].loop;
     a->adsr1 = voices[i].adsr1;
     a->adsr2 = voices[i].adsr2;
+    /* the decoded envelope fields, as libspu returns them */
+    a->a_mode = (a->adsr1 & 0x8000) ? 5 : 1;
+    a->ar = (a->adsr1 >> 8) & 0x7F;
+    a->dr = (a->adsr1 >> 4) & 0xF;
+    a->sl = a->adsr1 & 0xF;
+    switch (a->adsr2 & 0xC000) {
+    case 0x0000: a->s_mode = 1; break;
+    case 0x4000: a->s_mode = 3; break;
+    case 0x8000: a->s_mode = 5; break;
+    default:     a->s_mode = 7; break;
+    }
+    a->sr = (a->adsr2 >> 6) & 0x7F;
+    a->r_mode = (a->adsr2 & 0x20) ? 7 : 3;
+    a->rr = a->adsr2 & 0x1F;
 }
 
 void SpuSetKey(long on_off, unsigned long voice_bit)
