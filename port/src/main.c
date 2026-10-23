@@ -12,6 +12,7 @@
 int  mgs_game_main(void);
 void psx_card_init(const char *dir);
 extern int mgs_force_english;
+extern int mgs_no_divide;
 
 static void usage(const char *argv0)
 {
@@ -25,6 +26,7 @@ static void usage(const char *argv0)
            "  --widescreen     16:9 picture with a wider 3D field of view\n"
            "  --stretch-hud    widescreen: stretch HUD/menus instead of keeping 4:3 proportions\n"
            "  --60fps          experimental: interpolated in-between frames (60 instead of 30)\n"
+           "  --no-divide      diagnosis: do not subdivide polygons close to the camera\n"
            "\n"
            "Keys: arrows = d-pad, X = cross, C = circle, Z = square, V = triangle,\n"
            "      A/S = L1/R1, Q/W = L2/R2, Enter = start, Backspace = select, Esc = quit\n",
@@ -59,6 +61,8 @@ int main(int argc, char **argv)
             psx_mem_guard = 1;
         else if (!strcmp(argv[i], "--watch-stack"))
             psx_watch_stack = 1;
+        else if (!strcmp(argv[i], "--no-divide"))
+            mgs_no_divide = 1;
         else {
             usage(argv[0]);
             return strcmp(argv[i], "--help") ? 1 : 0;

@@ -86,6 +86,9 @@ FIXUPS = [
     ('libdg/sort.c', r'list = \*buf\+\+;', 'list = (unsigned int *)mgs_ptr24((unsigned long)*buf++);'),
     ('takabe/libdg2.c', r'tag = \*buf\+\+;', 'tag = (unsigned int *)mgs_ptr24((unsigned long)*buf++);'),
     # a pointer cut to 24 bits with getaddr() and used as a pointer again
+    # --no-divide (diagnosis): never subdivide polygons near the camera
+    ('libdg/divide.c', r'divide_mem->field_14 = 0x800;',
+     'divide_mem->field_14 = mgs_no_divide ? 0x7FFFFFFF : 0x800;'),
     ('libdg/divide.c', r'pack = \(POLY_GT4\*\)getaddr\( &org_pack \);',
      'pack = (POLY_GT4*)mgs_ptr24(getaddr( &org_pack ));'),
     # ...and stored back into the ordering table as 24-bit links again, as the

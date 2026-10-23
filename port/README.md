@@ -270,7 +270,14 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   Arbeitsverzeichnis; `MGS_SCREENSHOT_FRAME=n` löst das beim n-ten Bild aus.
 - Fehlersuche: `--watch-stack` (Windows) überwacht per Hardware-Watchpoint
   die Rücksprungadresse der Actor-Schleife und meldet mit `WATCH:`, welche
-  Anweisung sie überschreibt; `--guard-mem` sperrt den alten Programmbereich.
+  Anweisung sie überschreibt; `--guard-mem` sperrt den alten Programmbereich;
+  `--no-divide` schaltet die Unterteilung kameranaher Polygone ab (zum
+  Eingrenzen von Grafikfehlern).
+- Die GTE wurde mit einem Differenztest gegen PsyZ geprüft (zufällige
+  Register, alle Befehle): Sättigungs-Flags von SX/SY und Farben lagen ein
+  Bit daneben, AVSZ sättigte vom 64-Bit- statt vom 32-Bit-MAC0. Übrig sind
+  nur Hardware-Sonderfälle von MVMVA (Matrix 3 / Farbvektor 2), die PsyZ
+  anders nachbildet, und Rundung um 1 Pixel bei gesättigten Werten.
 - Wo der Spielcode 24-Bit-Verweise selbst in Zeiger umwandelt (`DG_SortChanl`,
   `libdg2.c`, `divide.c` über `getaddr`, PsyQ-Makro `nextPrim`), löst
   `mgs_ptr24()` sie wie die GPU-Emulation auf; auf der Konsole sind sie als

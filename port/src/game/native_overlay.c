@@ -25,6 +25,7 @@
 extern void *StageCharacterEntries;
 
 int mgs_stage_bin_id = -1;
+int mgs_no_divide;
 
 /* diagnostics: type and size of the first records taken from the CD stream,
  * with the first words of their data */
