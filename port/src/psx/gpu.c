@@ -504,12 +504,16 @@ void psx_gpu_fill(int x, int y, int w, int h, u32 rgb)
         fill_target(&hires, x, y, w, h, c);
 }
 
-void psx_gpu_load(int x, int y, int w, int h, const u16 *src)
+/* load at most npix pixels (the data actually present) */
+static void gpu_load_n(int x, int y, int w, int h, const u16 *src, long npix)
 {
     int i, j, k, l, s = hires.shift;
     for (j = 0; j < h; j++)
         for (i = 0; i < w; i++) {
-            u16 c = *src++;
+            u16 c;
+            if (npix-- <= 0)
+                return;
+            c = *src++;
             u16 *p = &PIX(x + i, y + j);
             if (gs.check_mask && (*p & 0x8000))
                 continue;
@@ -521,6 +525,11 @@ void psx_gpu_load(int x, int y, int w, int h, const u16 *src)
                     for (l = 0; l < (1 << s); l++)
                         TPIX(&hires, ((x + i) << s) + l, ((y + j) << s) + k) = c;
         }
+}
+
+void psx_gpu_load(int x, int y, int w, int h, const u16 *src)
+{
+    gpu_load_n(x, y, w, h, src, (long)w * h);
 }
 
 void psx_gpu_store(int x, int y, int w, int h, u16 *dst)
@@ -766,7 +775,18 @@ static void exec_command(const u32 *p, int words)
         return;
     }
     if (cmd >= 0xA0 && cmd < 0xC0) {
-        psx_gpu_load(p[1] & 0x3FF, (p[1] >> 16) & 0x1FF, p[2] & 0xFFFF, p[2] >> 16, (const u16 *)&p[3]);
+        /* sizes as the GPU takes them (0 = 1024 x 512); the pixels follow in
+         * the packet - never read past it */
+        int w = (int)(((p[2] & 0xFFFF) - 1) & 0x3FF) + 1, h = (int)((((p[2] >> 16) & 0xFFFF) - 1) & 0x1FF) + 1;
+        long have = words > 3 ? (long)(words - 3) * 2 : 0;
+        if (have < (long)w * h) {
+            static int logged;
+            if (logged++ < 3)
+                psx_log("GPU: image load %dx%d at %d,%d has data for %ld pixels only (packet %p, %08X %08X %08X)\n",
+                        w, h, (int)(p[1] & 0x3FF), (int)((p[1] >> 16) & 0x1FF), have, (const void *)p,
+                        (unsigned)p[0], (unsigned)p[1], (unsigned)p[2]);
+        }
+        gpu_load_n(p[1] & 0x3FF, (p[1] >> 16) & 0x1FF, w, h, (const u16 *)&p[3], have);
         return;
     }
     switch (cmd) {
