@@ -61,6 +61,13 @@ FIXUPS = [
     ('game/loader.c', r'#ifdef DEV_EXE\n(\s*)// force load some overlay in dev variant\n(\s*)if \(strcmp\(dir, "title"\) == 0\)',
      r'#if defined(DEV_EXE) || defined(MGS_NATIVE)\n\1// force load some overlay in dev variant\n\2if (strcmp(dir, "title") == 0 && !mgs_native_overlay_available("title"))'),
     # swap in the native chara table once a stage binary was loaded
+    # stage binaries in the streamed region ('s') are read straight to the
+    # overlay address, without GM_LoadInitBin: note their id and run the
+    # overlay hook once the whole stage is loaded (before its scenario runs)
+    ('libfs/cdstage.c', r'^(\s*)task->buffer = StageCharacterEntries;',
+     r'\1task->buffer = StageCharacterEntries;\n\1mgs_stage_bin_id = tag->id;'),
+    ('game/loader.c', r'FS_LoadStageComplete\(work->info\);',
+     'FS_LoadStageComplete(work->info);\n    mgs_native_stage_loaded();'),
     ('game/gamed.c', r'memcpy\(StageCharacterEntries, buf, gOverlayBinSize_800B5290\);',
      'memcpy(StageCharacterEntries, buf, gOverlayBinSize_800B5290);\n    mgs_native_overlay_loaded(id);'),
 ]
