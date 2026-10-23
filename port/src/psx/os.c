@@ -10,11 +10,11 @@ extern char __executable_start[] __attribute__((weak));
 extern char etext[] __attribute__((weak));
 
 /* return addresses on the stack: words pointing into the program's code */
-static void crash_backtrace(const uint32_t *sp, uint32_t lo, uint32_t hi)
+static void crash_backtrace(const uint32_t *sp, int words, uint32_t lo, uint32_t hi)
 {
     int i, n = 0;
     fprintf(stderr, "CRASH: probable call chain:");
-    for (i = 0; i < 512 && n < 24; i++) {
+    for (i = 0; i < words && n < 24; i++) {
         uint32_t v = sp[i];
         if (v >= lo && v < hi) {
             fprintf(stderr, " %08X", v);
@@ -48,25 +48,50 @@ int os_protect_none(uint32_t addr, uint32_t size)
 
 static LONG WINAPI crash_filter(EXCEPTION_POINTERS *e)
 {
+    static volatile LONG reported;
     const EXCEPTION_RECORD *r = e->ExceptionRecord;
     const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)GetModuleHandleA(NULL);
     const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const char *)dos + dos->e_lfanew);
     uint32_t base = (uint32_t)(uintptr_t)dos;
 
+    switch (r->ExceptionCode) {
+    case EXCEPTION_ACCESS_VIOLATION: case EXCEPTION_ILLEGAL_INSTRUCTION: case EXCEPTION_STACK_OVERFLOW:
+    case EXCEPTION_INT_DIVIDE_BY_ZERO: case EXCEPTION_PRIV_INSTRUCTION: case EXCEPTION_IN_PAGE_ERROR:
+        break;
+    default:
+        return EXCEPTION_CONTINUE_SEARCH;   /* C++/debug/benign exceptions */
+    }
+    if (InterlockedExchange(&reported, 1))
+        return EXCEPTION_CONTINUE_SEARCH;
     fprintf(stderr, "\nCRASH: exception 0x%08lX at EIP %08lX", (unsigned long)r->ExceptionCode,
             (unsigned long)e->ContextRecord->Eip);
     if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2)
         fprintf(stderr, " (%s address %08lX)", r->ExceptionInformation[0] ? "write to" : "read from",
                 (unsigned long)r->ExceptionInformation[1]);
     fprintf(stderr, "\n");
-    crash_backtrace((const uint32_t *)(uintptr_t)e->ContextRecord->Esp, base + nt->OptionalHeader.BaseOfCode,
-                    base + nt->OptionalHeader.BaseOfCode + nt->OptionalHeader.SizeOfCode);
-    return EXCEPTION_EXECUTE_HANDLER;
+    fflush(stderr);
+    {
+        /* only as far as the stack's memory region goes (fiber stacks are small) */
+        MEMORY_BASIC_INFORMATION mbi;
+        uintptr_t sp = (uintptr_t)e->ContextRecord->Esp, end;
+        int words = 0;
+        if (VirtualQuery((void *)sp, &mbi, sizeof(mbi)) && mbi.State == MEM_COMMIT) {
+            end = (uintptr_t)mbi.BaseAddress + mbi.RegionSize;
+            words = (int)((end - sp) / 4);
+            if (words > 1024)
+                words = 1024;
+        }
+        crash_backtrace((const uint32_t *)sp, words, base + nt->OptionalHeader.BaseOfCode,
+                        base + nt->OptionalHeader.BaseOfCode + nt->OptionalHeader.SizeOfCode);
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
 }
 
 void os_install_crash_handler(void)
 {
-    SetUnhandledExceptionFilter(crash_filter);
+    /* vectored: sees the fault first, also on fiber stacks and in threads
+     * whose own handlers would end the process silently */
+    AddVectoredExceptionHandler(1, crash_filter);
 }
 
 static void CALLBACK fiber_start(LPVOID arg)
@@ -142,7 +167,8 @@ static void crash_signal(int sig, siginfo_t *info, void *uc_)
 #if defined(__i386__) && defined(REG_EIP)
     fprintf(stderr, "\nCRASH: signal %d at EIP %08X (address %08X)\n", sig,
             (unsigned)uc->uc_mcontext.gregs[REG_EIP], (unsigned)(uintptr_t)info->si_addr);
-    crash_backtrace((const uint32_t *)(uintptr_t)uc->uc_mcontext.gregs[REG_ESP],
+    fflush(stderr);
+    crash_backtrace((const uint32_t *)(uintptr_t)uc->uc_mcontext.gregs[REG_ESP], 256,
                     (uint32_t)(uintptr_t)__executable_start, (uint32_t)(uintptr_t)etext);
 #else
     (void)uc;
