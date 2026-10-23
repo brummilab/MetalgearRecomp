@@ -317,24 +317,39 @@ static void exec_packet(const uint32_t *p, int len, int interp, int dx, int dy)
 /* diagnostics: packets whose first command is not a drawing command (VRAM
  * transfers inside an ordering table are rare; garbage often looks like one),
  * with the packet that links to them */
+/* diagnostics: packets containing a command that is no drawing command
+ * (VRAM transfers inside ordering tables are rare; garbage often decodes as
+ * one), dumped whole with the packet that links to them */
+static int odd_cmd(unsigned cmd)
+{
+    return !(cmd < 0x03 || (cmd >= 0x20 && cmd < 0xA0) || (cmd >= 0xE1 && cmd <= 0xE6));
+}
+
 static void check_packet(const u_long *p, const u_long *prev, unsigned len)
 {
     static int logged;
-    unsigned cmd = len ? (unsigned)(p[1] >> 24) : 0;
-    int i;
-    /* drawing commands, environment settings, fills, cache clear + copy (DR_MOVE) */
-    if (!len || cmd < 0x03 || (cmd >= 0x20 && cmd < 0xA0) || (cmd >= 0xE1 && cmd <= 0xE6))
+    const uint32_t *c = (const uint32_t *)(p + 1);
+    unsigned i = 0, at = 0, k;
+    int bad = 0;
+
+    while (i < len) {
+        if (odd_cmd(c[i] >> 24)) {
+            bad = 1;
+            at = i;
+            break;
+        }
+        i += (unsigned)psx_gpu_cmd_words(&c[i], (int)(len - i));
+    }
+    if (!bad || logged++ >= 4)
         return;
-    if (logged++ >= 6)
-        return;
-    psx_log("OT: odd packet %p tag %08X: %08X %08X %08X; before it:",
-            (const void *)p, (unsigned)p[0], (unsigned)p[1], (unsigned)p[2], (unsigned)p[3]);
-    for (i = -8; i < 0; i++)
-        psx_log(" %08X", (unsigned)p[i]);
+    psx_log("OT: packet %p tag %08X (%u words), odd command at word %u; words:", (const void *)p,
+            (unsigned)p[0], len, at);
+    for (k = 0; k < len && k < 40; k++)
+        psx_log(" %08X", (unsigned)c[k]);
     psx_log("; linked from %p", (const void *)prev);
     if (prev)
-        psx_log(" tag %08X: %08X %08X %08X %08X", (unsigned)prev[0], (unsigned)prev[1], (unsigned)prev[2],
-                (unsigned)prev[3], (unsigned)prev[4]);
+        psx_log(" tag %08X: %08X %08X %08X", (unsigned)prev[0], (unsigned)prev[1], (unsigned)prev[2],
+                (unsigned)prev[3]);
     psx_log("\n");
 }
 
