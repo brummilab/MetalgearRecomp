@@ -232,6 +232,11 @@ Verweise mit nur 24 Bit. Der Port ist deshalb bewusst ein 32-Bit-Programm:
   Puffer der Laufzeitschicht (VRAM, Sound-RAM, Film- und Memory-Card-Puffer)
   liegen deshalb auf dem Heap (`PSX_HEAP_BUFFER`), und `psx_mem_init()` bricht
   mit einer klaren Meldung ab, wenn die Programmdaten die Grenze überschreiten.
+- Die Einstiegs-Hüllen recompilierter Funktionen deklarieren keine Parameter
+  und lesen ihre Argumente nur (`RC_ARGS8`): Native Aufrufer übergeben über
+  Funktionszeiger so viele Argumente wie das Original, und ein Compiler darf
+  Parameter-Slots als Zwischenspeicher nutzen – mit acht deklarierten
+  Parametern überschrieb das den Stapel des Aufrufers.
 - Recompilierter Code bildet Zugriffe auf die ersten 64 KB (Null-Zeiger; auf
   der PS1 der Anfang des RAMs) wie die Konsole auf das PS1-RAM ab, ohne
   Verzweigung (`rc_ea`); Stapel- und bekannte Adressen gehen direkt. Er wird
