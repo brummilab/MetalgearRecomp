@@ -183,6 +183,7 @@ port/
 │   ├── link_overlay.py     Overlays vorlinken, Symbole lokalisieren
 │   ├── gen_overlay_table.py
 │   ├── recomp.py           statischer MIPS→C-Recompiler für Overlays
+│   ├── unecm.c             ECM-Disc-Abbilder (*.bin.ecm) entpacken
 │   └── native_syms.py      Symbollisten des nativen Programms für recomp.py
 ├── src/
 │   ├── main.c              Einstieg, Kommandozeile
@@ -203,6 +204,11 @@ port/
 ├── tests/test_runtime.c    Selbsttests GTE/GPU/Filmkette (ohne Spieldaten)
 └── tests/test_recomp.c     Recompiler gegen Compiler (nur mit PS1-Build)
 ```
+
+**Disc-Abbilder im ECM-Format** (`*.bin.ecm`) wandelt `unecm` (wird mitgebaut,
+`build/<plattform>/unecm[.exe]`) zurück in ein normales Abbild. Es prüft die
+Prüfsumme und meldet, ob es die richtige Disc ist (`SLPM_862.47`):
+`unecm "<abbild>.bin.ecm" mgs1.bin`
 
 **Das Upstream-Repo bleibt unverändert.** Der Build legt eine übersetzte Kopie
 der Quellen in `<build>/gen/` an:
