@@ -41,6 +41,16 @@ FIXUPS = [
     # the directory scan prints found->pos also for files missing from the
     # table (found == NULL); the console just reads address 0
     ('libfs/srchfile.c', r'size, found->pos\);', 'size, found ? found->pos : 0);'),
+    # memcard_check() returns without a value after memcard_retry(); on the
+    # console v0 then holds memcard_dummy()'s result (memcard_retry ends with a
+    # tail call), e.g. 0xC0000003 for an empty slot. Natively it was garbage,
+    # so the title screen took an empty slot 2 for a good card.
+    ('memcard/memcard.c', r'static void memcard_retry\(int port\);', 'static int memcard_retry(int port);'),
+    ('memcard/memcard.c', r'static void memcard_retry\(int port\)\n\{', 'static int memcard_retry(int port)\n{'),
+    ('memcard/memcard.c', r'memcard_dummy\(op\);\n(\s*)return;', r'return memcard_dummy(op);'),
+    ('memcard/memcard.c', r'(\n\s*)memcard_dummy\(op\);\n\}', r'\1return memcard_dummy(op);\n}'),
+    ('memcard/memcard.c', r'memcard_retry\(port\);\n(\s*)return;', r'return memcard_retry(port);'),
+    ('memcard/memcard.c', r'return; // FIXME: Return without value', r'return sw_card_op; // FIXME: Return without value'),
     # the kernel's thread tables live at physical address 0x100 on the console
     ('mts/mts_new.c', r'\(struct ToT \*\)0x100', '((struct ToT *)psx_ToT)'),
     # keep the host printf: MTS replaces it with a dummy in release builds
