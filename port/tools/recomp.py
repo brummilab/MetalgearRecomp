@@ -117,6 +117,7 @@ class Recompiler:
         self.runtime = set(runtime)
         self.cur = None
         self.internal = set()
+        self.inner = set()      # function starts inside merged regions (entries)
         self.own = None         # recompiled functions, if not the whole text
         self.text_lo, self.text_hi = text_lo, text_hi
         self.main_hi = main_hi
@@ -297,6 +298,71 @@ class Recompiler:
         for i, s in enumerate(starts):
             e = starts[i + 1] if i + 1 < len(starts) else self.text_hi
             out.append((s, e))
+        return self.merge_cross_jumps(out)
+
+    def is_forwarded(self, start):
+        n = self.sym_at.get(start)
+        return bool(n) and self.native_name(n) in self.runtime and self.native_name(n) in self.native
+
+    def merge_cross_jumps(self, regs):
+        """Functions that jump (j/b, not jal) into another one share code with
+        it, typically an epilogue that relies on the jumping function's stack
+        frame and registers. Such functions become one C function, so the jump
+        stays a goto; the real function starts inside become its entries."""
+        import bisect
+        starts = [s for s, _ in regs]
+        parent = list(range(len(regs)))
+
+        def find(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        for i, (s, e) in enumerate(regs):
+            for pc in range(s, e, 4):
+                w = self.img.word(pc)
+                k = self.kind(w)
+                if k == 'branch':
+                    t = self.branch_target(pc, w)
+                elif k == 'jump':
+                    t = self.jump_target(pc, w)
+                else:
+                    continue
+                if s <= t < e or not (self.text_lo <= t < self.text_hi):
+                    continue
+                j = bisect.bisect_right(starts, t) - 1
+                if j >= 0 and t != starts[j]:           # into the middle of region j
+                    parent[find(i)] = find(j)
+        groups = {}
+        for i in range(len(regs)):
+            groups.setdefault(find(i), []).append(i)
+        spans = []
+        for g in groups.values():
+            if len(g) == 1:
+                continue
+            if any(self.is_forwarded(regs[i][0]) for i in g):
+                self.warnings.append('cross-jump into a library function at 0x%08X not merged' % regs[g[0]][0])
+                continue
+            spans.append([min(regs[i][0] for i in g), max(regs[i][1] for i in g)])
+        spans.sort()
+        merged = []
+        for sp in spans:                                # overlapping spans become one
+            if merged and sp[0] < merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], sp[1])
+            else:
+                merged.append(sp)
+        if not merged:
+            return regs
+        out = []
+        for s, e in regs:
+            m = next((sp for sp in merged if sp[0] <= s < sp[1]), None)
+            if m is None:
+                out.append((s, e))
+            elif s == m[0]:
+                out.append((m[0], m[1]))
+            else:
+                self.inner.add(s)                       # a function start inside a merged span
         return out
 
     # -- data flow: known main-executable addresses in registers ---------------------
@@ -523,7 +589,7 @@ class Recompiler:
         call = '((RcFn)%s)(RC_ARGS8)' % native
         out.append('{ return %s; }' % ('(uint32_t)(int32_t)(%s)%s' % (t, call) if t else call))
         entries = [start]
-        for e in sorted(p for p in self.secondary | self.internal if start < p < end):
+        for e in sorted(p for p in self.secondary | self.internal | self.inner if start < p < end):
             self.warnings.append('entry 0x%08X inside library function %s' % (e, native))
             out.append('uint32_t %s_%08X()' % (self.prefix, e))
             out.append('{ return rc_unresolved(0x%08Xu, "%s+"); }' % (e, native))
@@ -548,7 +614,7 @@ class Recompiler:
                 if start <= t < end:
                     lab.add(t)
         lab |= set(p for p in self.pointers if start < p < end)
-        entries = [start] + sorted(p for p in self.secondary | self.internal if start < p < end)
+        entries = [start] + sorted(p for p in self.secondary | self.internal | self.inner if start < p < end)
         lab |= set(entries[1:])
         st_at = self.analyse(start, end, lab, entries)
 
@@ -812,7 +878,7 @@ def main():
     # prototypes first (functions call each other)
     protos = []
     for s, e in regs:
-        ents = [s] + sorted(p for p in rc.secondary | rc.internal if s < p < e)
+        ents = [s] + sorted(p for p in rc.secondary | rc.internal | rc.inner if s < p < e)
         for x in ents:
             protos.append('uint32_t %s_%08X();' % (rc.prefix, x))
     for s, e in regs:

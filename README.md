@@ -28,6 +28,9 @@ Dieses Repo ergänzt das um:
 2. **Matching-Build** der PS1-Version unter Linux/WSL (Wine), inklusive
    Hash-Prüfung gegen das Original.
 
+> 🎮 **Erster Test mit echter Disc (Windows, 23.10.2026): Das Spiel läuft bis
+> ins Titelmenü** (mit recompiliertem Titelbildschirm).
+>
 > ⚠️ **Stand des PC-Ports:** Er baut, linkt und bootet auf Linux und Windows.
 > Mit einem echten Disc-Image ist der Spielablauf noch **nicht getestet**.
 > Titelbildschirm und einige Stages fehlen noch upstream, Details siehe

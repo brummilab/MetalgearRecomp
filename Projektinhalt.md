@@ -56,7 +56,7 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - PC-Port Linux: baut, Selbsttests grün, bootet bis zum CD-Zugriff
 - PC-Port Windows: baut (MinGW-Cross), Selbsttests grün, bootet unter Wine gleich weit
 - 168 Quelldateien Hauptprogramm + 62 Overlays nativ eingebunden + 16 Overlays recompiliert (brf, camera, change, d18a, d18ar, s03d, s07b, s08b, s08br, s11d, s11g, s14e, s15c, s19b, s19br, title)
-- Mit echtem Disc-Image noch nicht getestet
+- Mit echtem Disc-Image (Windows): bootet bis ins Titelmenü (23.10.2026)
 
 ## Offene Punkte
 
@@ -105,3 +105,4 @@ auf Basis des dekompilierten C-Quellcodes und ohne Emulator.
 - **2026-10-23:** Sechster Test: Memory-Card-Prüfung im Titel läuft. Absturz in `DG_DivideChanl`: asm2c übersetzte das Sichern von `$sp` in `SetSpadStack` als Schreibzugriff auf Adresse 0 – behoben. Maschinencode-Scan nach Zugriffen auf Adresse 0 gefunden: weitere in `dummy_fl.c` (Fixup) und im recompilierten Code (Original-MIPS schreibt dorthin) → Zugriffe auf die ersten 64 KB werden im recompilierten Code wie auf der PS1 abgebildet; Scan jetzt 0 Treffer. Recompilierter Code mit `-Os` (Datenende 14,1 MB). Header jetzt ebenfalls Byproducts der Übersetzung. Startprüfung erkennt Debug-Abschnitte unter Windows korrekt.
 - **2026-10-23:** Siebter Test: Absturz mit EIP 0 im Spiel-Task – die Rücksprungadresse von `GV_ExecActorSystem` wird mit 0 überschrieben. Statische Prüfungen (Querverweise zwischen Funktionen, $sp-Zugriffe im recompilierten Titel) ohne Befund; Diagnose-Option `--watch-stack` (Hardware-Watchpoint, unter Wine geprüft) eingebaut, um den Täter zu finden. Nebenbefund: Sprünge in fremde Funktionen (s08b: 5, d18a: 1) müssen noch zusammengeführt werden.
 - **2026-10-23:** Achter Test mit `--watch-stack`: Täter gefunden – die Einstiegs-Hülle `rc_title_800D37F4` schrieb in den Slot ihres 8. Parameters, den der native Aufrufer (Funktionszeiger mit 1–2 Argumenten) nie übergeben hatte, und traf damit die Rücksprungadresse von `GV_ExecActorSystem`. Hüllen haben jetzt keine Parameter mehr und lesen die Argumente nur; Maschinencode-Scan: vorher 1962 von 5756 Hüllen betroffen, jetzt 0.
+- **2026-10-23:** 🎮 **Meilenstein: Mit echter Disc läuft das Spiel unter Windows bis ins Titelmenü.** Offen: Meldung „SOUND WORK IS BROKEN“ nach Liedwechsel (Reihenfolge Sound-/Spiel-Task prüfen). Danach Sprünge zwischen Funktionen im Recompiler aufgelöst (Funktionen zusammengeführt; s08b, d18a), damit diese Stages nicht abstürzen.
