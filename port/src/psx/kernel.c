@@ -116,6 +116,13 @@ void psx_poll(void)
         switch_to(target);
 }
 
+int psx_watch_stack;
+
+void psx_watch_return_slot(void *slot)
+{
+    os_watch_return_slot(slot);
+}
+
 void psx_idle(void)
 {
     double now = (double)plat_ticks_us();

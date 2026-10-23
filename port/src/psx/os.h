@@ -14,6 +14,10 @@ void *os_map_fixed(uint32_t addr, uint32_t size, int exec);
 /* make [addr, addr + size) inaccessible (page aligned) */
 int   os_protect_none(uint32_t addr, uint32_t size);
 
+/* debugging: report writes to the 4 bytes at addr that do not store a code
+ * address (e.g. a smashed return address); Windows only, no-op elsewhere */
+void  os_watch_return_slot(void *addr);
+
 /* end of the program's loaded data (address after its last data section) */
 uint32_t os_image_data_end(void);
 

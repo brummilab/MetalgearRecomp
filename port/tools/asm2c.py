@@ -53,6 +53,10 @@ FIXUPS = [
     ('memcard/memcard.c', r'return; // FIXME: Return without value', r'return sw_card_op; // FIXME: Return without value'),
     # reads the vector at address 0 (start of RAM on the console)
     ('takabe/dummy_fl.c', r'\*\(SVECTOR \*\)0x00000000', '*(SVECTOR *)0x80000000'),
+    # --watch-stack: watch the actor loop's return address (debugging aid)
+    ('libgv/actor.c', r'void GV_ExecActorSystem\( void \)\n\{\n(\s*)AList \*list;\n(\s*)int    i, pause;\n',
+     r'void GV_ExecActorSystem( void )\n{\n\1AList *list;\n\2int    i, pause;\n\n'
+     r'\1if ( psx_watch_stack )\n\1    psx_watch_return_slot( (char *)__builtin_frame_address( 0 ) + 4 );\n'),
     # the kernel's thread tables live at physical address 0x100 on the console
     ('mts/mts_new.c', r'\(struct ToT \*\)0x100', '((struct ToT *)psx_ToT)'),
     # keep the host printf: MTS replaces it with a dummy in release builds

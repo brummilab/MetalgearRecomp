@@ -66,10 +66,50 @@ int os_protect_none(uint32_t addr, uint32_t size)
     return VirtualProtect((void *)(uintptr_t)addr, size, PAGE_NOACCESS, &old) ? 0 : -1;
 }
 
+static uint32_t watch_addr, watch_lo, watch_hi;
+static int      watch_reports;
+
+static void code_range(uint32_t *lo, uint32_t *hi)
+{
+    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)GetModuleHandleA(NULL);
+    const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const char *)dos + dos->e_lfanew);
+    *lo = (uint32_t)(uintptr_t)dos + nt->OptionalHeader.BaseOfCode;
+    *hi = *lo + nt->OptionalHeader.SizeOfCode;
+}
+
 static LONG WINAPI crash_filter(EXCEPTION_POINTERS *e)
 {
     static volatile LONG reported;
     const EXCEPTION_RECORD *r = e->ExceptionRecord;
+
+    if (r->ExceptionCode == EXCEPTION_SINGLE_STEP && (e->ContextRecord->Dr6 & 1) && watch_addr) {
+        /* data watchpoint: the write already happened */
+        uint32_t v = *(volatile uint32_t *)(uintptr_t)watch_addr;
+        e->ContextRecord->Dr6 = 0;
+        if (!(v >= watch_lo && v < watch_hi) && watch_reports++ < 3) {
+            uintptr_t sp = (uintptr_t)e->ContextRecord->Esp;
+            MEMORY_BASIC_INFORMATION mbi;
+            int words = 0;
+            fprintf(stderr, "\nWATCH: %08X written at %08X with %08X (instruction before EIP %08lX)\n",
+                    (unsigned)watch_addr, (unsigned)watch_addr, (unsigned)v, (unsigned long)e->ContextRecord->Eip);
+            if (VirtualQuery((void *)sp, &mbi, sizeof(mbi)) && mbi.State == MEM_COMMIT) {
+                words = (int)(((uintptr_t)mbi.BaseAddress + mbi.RegionSize - sp) / 4);
+                if (words > 1024)
+                    words = 1024;
+            }
+            crash_backtrace((const uint32_t *)sp, words, watch_lo, watch_hi);
+            e->ContextRecord->Dr7 &= ~1u;      /* the first culprit is what counts */
+        }
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    if (r->ExceptionCode == EXCEPTION_BREAKPOINT && e->ContextRecord->Eax == 0x4D47 && watch_addr) {
+        /* arm the debug registers of this thread (see os_watch_return_slot) */
+        CONTEXT *c = e->ContextRecord;
+        c->Dr0 = watch_addr;
+        c->Dr7 = (c->Dr7 & ~0x000F0003u) | 1u | (1u << 16) | (3u << 18);   /* L0, write, 4 bytes */
+        c->Eip += 1;                                                         /* skip the int3 */
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
     const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)GetModuleHandleA(NULL);
     const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const char *)dos + dos->e_lfanew);
     uint32_t base = (uint32_t)(uintptr_t)dos;
@@ -125,6 +165,17 @@ uint32_t os_image_data_end(void)
             end = e;
     }
     return end;
+}
+
+void os_watch_return_slot(void *addr)
+{
+    if (watch_addr)
+        return;
+    code_range(&watch_lo, &watch_hi);
+    watch_addr = (uint32_t)(uintptr_t)addr;
+    fprintf(stderr, "watch: return slot %08X\n", (unsigned)watch_addr);
+    /* debug registers can only be set from an exception context: trap once */
+    __asm__ volatile("movl $0x4D47, %%eax\n\tint3" ::: "eax", "memory");
 }
 
 void os_install_crash_handler(void)
@@ -204,6 +255,11 @@ int os_protect_none(uint32_t addr, uint32_t size)
 uint32_t os_image_data_end(void)
 {
     return (uint32_t)(uintptr_t)_end;
+}
+
+void os_watch_return_slot(void *addr)
+{
+    (void)addr;
 }
 
 static void crash_signal(int sig, siginfo_t *info, void *uc_)

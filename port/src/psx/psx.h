@@ -72,6 +72,8 @@ typedef struct { u_char r, g, b, cd; } CVECTOR;
 
 /* debugging: make the original executable's area inaccessible (--guard-mem) */
 extern int psx_mem_guard;
+/* debugging: watch the actor loop's return address (--watch-stack, Windows) */
+extern int psx_watch_stack;
 int  psx_mem_init(void);
 
 /* GPU ordering-table links hold the low 24 bits of an address */

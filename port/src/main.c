@@ -57,6 +57,8 @@ int main(int argc, char **argv)
             fps60 = 1;
         else if (!strcmp(argv[i], "--guard-mem"))
             psx_mem_guard = 1;
+        else if (!strcmp(argv[i], "--watch-stack"))
+            psx_watch_stack = 1;
         else {
             usage(argv[0]);
             return strcmp(argv[i], "--help") ? 1 : 0;
